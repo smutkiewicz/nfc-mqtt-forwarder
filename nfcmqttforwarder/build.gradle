@@ -4,6 +4,10 @@ apply plugin: 'kotlin-android'
 
 apply plugin: 'kotlin-android-extensions'
 
+apply plugin: 'com.github.dcendents.android-maven'
+
+group = 'com.github.smutkiewicz'
+
 android {
     compileSdkVersion 28
 
@@ -34,6 +38,8 @@ dependencies {
             'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.1.0',
             'org.eclipse.paho:org.eclipse.paho.android.service:1.1.1'
     )
+
+    implementation 'com.github.smutkiewicz:nfc-mqtt-forwarder:v0.1'
 }
 repositories {
     maven {
