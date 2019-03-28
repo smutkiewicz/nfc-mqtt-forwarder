@@ -1,6 +1,10 @@
 # NfcMqttForwarder
 
-Where to get your library:
+Simple NFC tag message MQTT forwarder based on Paho Android Service. Processes NFC intent and sends its content directly to MQTT Server.
+
+## Setup
+
+Where to get the library:
 
 ```
    repositories {
@@ -9,5 +13,6 @@ Where to get your library:
    }
 
    dependencies {
-         implementation 'com.github.jitpack:gradle-simple:1.0'
+         implementation "com.github.smutkiewicz:nfc-mqtt-forwarder:v0.1"
+   }
 ```   
