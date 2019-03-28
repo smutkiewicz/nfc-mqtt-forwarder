@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">NfcMqttForwarder</string>
+    <string name="server_connection_failure">Failed to connect to MQTT Server. Something went wrong e.g. connection
+        timeout or firewall problems.
+    </string>
+    <string name="server_disconnection_failure">Failed to disconnect MQTT Server. Something went wrong e.g. connection
+        timeout or firewall problems.
+    </string>
+    <string name="server_publish_failure">Failed to publish to MQTT Server. Something went wrong e.g. unrecognized topic
+        or internet connection problems.
+    </string>
+    <string name="non_nfc_intent_detected">Non - NFC Intent detected.</string>
+</resources>
+
