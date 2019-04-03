@@ -5,12 +5,15 @@ import android.content.Intent
 import android.nfc.NdefMessage
 import android.nfc.NdefRecord
 import android.nfc.NfcAdapter
+import android.nfc.Tag
+import android.os.Build
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.IMqttActionListener
 import org.eclipse.paho.client.mqttv3.IMqttToken
 import org.eclipse.paho.client.mqttv3.MqttClient
 import org.eclipse.paho.client.mqttv3.MqttMessage
+import java.nio.charset.StandardCharsets
 
 /**
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
@@ -19,17 +22,21 @@ import org.eclipse.paho.client.mqttv3.MqttMessage
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
                        private val topic: String,
-                       private val clientId: String = MqttClient.generateClientId()) {
+                       private val clientId: String = MqttClient.generateClientId(),
+                       private val messageType: MessageType = MessageType.ONLY_PAYLOAD) {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
 
     /**
-     * Pushes raw message in format "mimeType;record1;record2;...;" (for NDEF_ACTION intents) or
-     * NfcAdapter.EXTRA_ID as NFC low-level tag ID (when Intent action is of type TECH_ACTION or TAG_ACTION)
-     * directly to MQTT Server provided by user (specified by serverUri).
-     * @param intent Intent forwarded to the library from onNewIntent() method in Activity.
+     * Pushes raw String message containing all NDEF records
+     * divided by semicolons in format "record1;record2;..." (for NDEF_ACTION intents type) or
+     * NFC low-level tag UID/RID in format "tagUID" (when Intent action is of type TECH_ACTION or TAG_ACTION)
+     * directly to topic on MQTT Server provided by user (specified by serverUri).
+     *
+     * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
      */
     fun processNfcIntent(intent: Intent) {
+        Log.d(TAG, "Processing intent of type " + intent.action + ".")
         when {
             isActionAnNdefNfcIntent(intent.action!!) -> processNdefMessageFrom(intent)
             isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent)
@@ -38,14 +45,12 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     /**
-     * Parses the NDEF Message from the intent and sends it to server.
-     * Processes one message sent during the beam.
+     * Parses all NDEF Messages from the intent and sends it to server.
      */
     private fun processNdefMessageFrom(intent: Intent) {
         intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)?.also { rawMsgs ->
             rawMsgs.forEach {
                 (it as NdefMessage).apply {
-                    // record 0 contains the MIME type, record 1 is the AAR, if present
                     val message = createMessage(records)
                     connectToServerAndTryToPublishMessage(message)
                 }
@@ -54,21 +59,54 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     /**
-     * Parses non-NDEF tag message as tag id from the intent and sends it to server.
+     * Parses non-NDEF tag message as tag stable unique identifier (UID) from the intent and sends it to server
+     * as no parsable NDEF messages were detected.
+     *
+     * The tag identifier is a low level serial number, used for anti-collision and identification.
+     * Most tags have UID, but some tags will generate a random ID every time they are discovered (RID)
+     * and there are some tags with no ID at all (the byte array will be zero-sized),
+     * so do not rely on such a method of identifying tags unless you're sure your tags have stable UID.
      */
     private fun processTagFrom(intent: Intent) {
-        intent.getStringExtra(NfcAdapter.EXTRA_ID)?.also {
-            connectToServerAndTryToPublishMessage(it)
+        intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)?.also {
+            val message = createMessage(arrayOf(it.id.toString()))
+            connectToServerAndTryToPublishMessage(message)
         }
     }
 
     /**
-     * Creates message for MQTT server. Format standard is "mimeType;record1;record2;...;"
+     * Creates message for MQTT server of type defined in MessageType."
      */
-    private fun createMessage(records: Array<out NdefRecord>) = records.joinToString(MSG_SEPARATOR)
+    private fun createMessage(records: Array<NdefRecord>) : String {
+        val message = when (messageType) {
+            MessageType.FULL_NDEF_MESSAGE -> records.joinToString(MSG_SEPARATOR)
+            MessageType.ONLY_PAYLOAD -> records.joinToString(MSG_SEPARATOR) { convertBytesToString(it.payload) }
+            MessageType.ONLY_UID_RID -> records.map { it.id }.joinToString(MSG_SEPARATOR)
+        }
+
+        Log.d(TAG, "Created message of type " + messageType.name + " = \"$message\"")
+        return message
+    }
 
     /**
-     * Specifies if intent is compatible with standard NDEF Message - a container for one or more NDEF Records.
+     * Creates message for MQTT server of type MessageType.ONLY_UID_RID, used when non-NDEF tag was detected."
+     */
+    private fun createMessage(records: Array<String>) : String {
+        val message = records.joinToString(MSG_SEPARATOR) { convertBytesToString(it.toByteArray())}
+
+        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID.name + " = \"$message\"")
+        return message
+    }
+
+    private fun convertBytesToString(byteArray: ByteArray) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+        String(byteArray, StandardCharsets.UTF_8)
+    } else {
+        String(byteArray)
+    }
+
+    /**
+     * Specifies if intent is compatible with standard NDEF Message - a container for one or more NDEF Records
+     * that can store data of well known mimetypes.
      */
     private fun isActionAnNdefNfcIntent(action: String) : Boolean = NfcAdapter.ACTION_NDEF_DISCOVERED == action
 
@@ -122,8 +160,39 @@ class NfcMqttForwarder(private val application: Application,
         }
     }
 
-    private companion object {
-        val TAG = NfcMqttForwarder::class.java.name
-        const val MSG_SEPARATOR = ";"
+    /**
+     * Formats content sent in messages to MQTT server.
+     */
+    enum class MessageType {
+
+        /**
+         * ONLY_UID_RID sets Forwarder to send raw unconverted low-level UID/RID of an nfc tag,
+         * used automatically when no NDEF content is detected.
+         */
+        ONLY_UID_RID,
+
+        /**
+         * ONLY_PAYLOAD sets Forwarder to send only String UTF-converted payload content read from NdefRecord.
+         */
+        ONLY_PAYLOAD,
+
+        /**
+         * FULL_NDEF_MESSAGE sets Forwarder to send also raw unconverted info about tnf, type and payload.
+         */
+        FULL_NDEF_MESSAGE
+    }
+
+    companion object {
+        private val TAG = NfcMqttForwarder::class.java.simpleName
+        private const val MSG_SEPARATOR = ";"
+
+        /**
+         * Filters on intents supported by the library.
+         * Can be used before passing intent to be processed by Forwarder.
+         */
+        fun isIntentsNfcActionSupported(intent: Intent) : Boolean =
+            NfcAdapter.ACTION_NDEF_DISCOVERED == intent.action ||
+                    NfcAdapter.ACTION_TECH_DISCOVERED == intent.action ||
+                    NfcAdapter.ACTION_TAG_DISCOVERED == intent.action
     }
 }
