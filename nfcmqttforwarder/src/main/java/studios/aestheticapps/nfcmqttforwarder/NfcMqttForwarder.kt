@@ -9,10 +9,7 @@ import android.nfc.Tag
 import android.os.Build
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
-import org.eclipse.paho.client.mqttv3.IMqttActionListener
-import org.eclipse.paho.client.mqttv3.IMqttToken
-import org.eclipse.paho.client.mqttv3.MqttClient
-import org.eclipse.paho.client.mqttv3.MqttMessage
+import org.eclipse.paho.client.mqttv3.*
 import java.nio.charset.StandardCharsets
 
 /**
@@ -28,9 +25,8 @@ class NfcMqttForwarder(private val application: Application,
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
 
     /**
-     * Pushes raw String message containing all NDEF records
-     * divided by semicolons in format "record1;record2;..." (for NDEF_ACTION intents type) or
-     * NFC low-level tag UID/RID in format "tagUID" (when Intent action is of type TECH_ACTION or TAG_ACTION)
+     * Pushes raw String message containing all NDEF records as Json list (for NDEF_ACTION intents type) or
+     * NFC low-level tag UID/RID as single-entry Json list with tagUid (when Intent action is of type TECH_ACTION or TAG_ACTION)
      * directly to topic on MQTT Server provided by user (specified by serverUri).
      *
      * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
@@ -78,10 +74,11 @@ class NfcMqttForwarder(private val application: Application,
      * Creates message for MQTT server of type defined in MessageType."
      */
     private fun createMessage(records: Array<NdefRecord>) : String {
+        val serializer = JsonSerializer()
         val message = when (messageType) {
-            MessageType.FULL_NDEF_MESSAGE -> records.joinToString(MSG_SEPARATOR)
-            MessageType.ONLY_PAYLOAD -> records.joinToString(MSG_SEPARATOR) { convertBytesToString(it.payload) }
-            MessageType.ONLY_UID_RID -> records.map { it.id }.joinToString(MSG_SEPARATOR)
+            MessageType.FULL_NDEF_MESSAGE -> serializer.arrayToJson(records.asList())
+            MessageType.ONLY_PAYLOAD -> serializer.arrayToJson(records.map { convertBytesToString(it.payload) })
+            MessageType.ONLY_UID_RID -> serializer.arrayToJson(records.map { it.id })
         }
 
         Log.d(TAG, "Created message of type " + messageType.name + " = \"$message\"")
@@ -92,7 +89,8 @@ class NfcMqttForwarder(private val application: Application,
      * Creates message for MQTT server of type MessageType.ONLY_UID_RID, used when non-NDEF tag was detected."
      */
     private fun createMessage(records: Array<String>) : String {
-        val message = records.joinToString(MSG_SEPARATOR) { convertBytesToString(it.toByteArray())}
+        val serializer = JsonSerializer()
+        val message = serializer.arrayToJson(records.map { convertBytesToString(it.toByteArray()) })
 
         Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID.name + " = \"$message\"")
         return message
@@ -117,8 +115,12 @@ class NfcMqttForwarder(private val application: Application,
         NfcAdapter.ACTION_TECH_DISCOVERED == action || NfcAdapter.ACTION_TAG_DISCOVERED == action
 
     private fun connectToServerAndTryToPublishMessage(payload: String) {
+        val options = MqttConnectOptions()
+        options.userName = "username"
+        options.password = "password".toCharArray()
+
         // connect to MQTT Server
-        client.connect().actionCallback = object : IMqttActionListener {
+        client.connect(options).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.d(TAG, "Successfully connected to $serverUri.")
 

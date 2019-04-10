@@ -5,11 +5,13 @@ import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 
+private const val serverUri = "tcp://10.10.80.52:1883"
+
 class MainActivity : AppCompatActivity() {
 
     private val forwarder: NfcMqttForwarder by lazy { NfcMqttForwarder(
-        application, "exampleUri", "exampleTopic",
-        messageType = NfcMqttForwarder.MessageType.FULL_NDEF_MESSAGE)
+        application, serverUri, "couriers/test",
+        messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
