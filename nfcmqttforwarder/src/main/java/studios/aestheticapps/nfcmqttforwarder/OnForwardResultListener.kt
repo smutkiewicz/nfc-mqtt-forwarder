@@ -5,16 +5,40 @@ package studios.aestheticapps.nfcmqttforwarder
  */
 interface OnForwardResultListener {
 
+    /**
+     * Called when whole forwarding process (connect-publish-disconnect) succeeds.
+     */
+    fun onForwardingSuccessful()
+
+    /**
+     * Called when whole forwarding process (connect-publish-disconnect) fails.
+     */
+    fun onForwardingError()
+
     fun onConnectSuccessful() {}
 
-    fun onConnectError(message: String) {}
+    /**
+     * Needs calling super when overrided.
+     */
+    fun onConnectError(message: String) {
+        onForwardingError()
+    }
 
     fun onPublishSuccessful() {}
 
-    fun onPublishError(message: String) {}
+    /**
+     * Needs calling super when overrided.
+     */
+    fun onPublishError(message: String) {
+        onForwardingError()
+    }
 
     fun onDisconnectSuccessful() {}
 
-    fun onDisconnectError(message: String) {}
-
+    /**
+     * Needs calling super when overrided.
+     */
+    fun onDisconnectError(message: String) {
+        onForwardingError()
+    }
 }

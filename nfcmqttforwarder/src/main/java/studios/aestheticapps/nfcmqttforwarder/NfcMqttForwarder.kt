@@ -9,20 +9,19 @@ import android.nfc.Tag
 import android.os.Build
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
-import org.eclipse.paho.client.mqttv3.IMqttActionListener
-import org.eclipse.paho.client.mqttv3.IMqttToken
-import org.eclipse.paho.client.mqttv3.MqttClient
-import org.eclipse.paho.client.mqttv3.MqttMessage
+import org.eclipse.paho.client.mqttv3.*
 import java.nio.charset.StandardCharsets
 
 /**
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Server.
+ * @property connectionTimeout Timeout, measured in seconds.
  */
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
                        private val defaultTopic: String,
                        private val clientId: String = MqttClient.generateClientId(),
+                       private val connectionTimeout: Int = 10,
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
                        private val onResultListener: OnForwardResultListener) {
 
@@ -120,18 +119,15 @@ class NfcMqttForwarder(private val application: Application,
 
     private fun connectToServerAndTryToPublishMessage(payload: String, topic: String) {
         // connect to MQTT Server
-        client.connect().actionCallback = object : IMqttActionListener {
+        client.connect(obtainOptions()).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.d(TAG, "Successfully connected to $serverUri.")
 
-                // try to publish message
-                publishMessage(payload, topic)
-
-                // disconnect
-                disconnectFromServer()
-
                 // notify observers
                 onResultListener.onConnectSuccessful()
+
+                // try to publish message
+                publishMessage(payload, topic)
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
@@ -143,6 +139,13 @@ class NfcMqttForwarder(private val application: Application,
         }
     }
 
+    private fun obtainOptions() : MqttConnectOptions {
+        val options = MqttConnectOptions()
+        options.connectionTimeout = connectionTimeout
+
+        return options
+    }
+
     private fun publishMessage(payload: String, topic: String) {
         val message = MqttMessage(payload.toByteArray())
         client.publish(topic, message).actionCallback = object : IMqttActionListener {
@@ -151,6 +154,9 @@ class NfcMqttForwarder(private val application: Application,
 
                 // notify observers
                 onResultListener.onPublishSuccessful()
+
+                // disconnect
+                disconnectFromServer()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
@@ -169,6 +175,9 @@ class NfcMqttForwarder(private val application: Application,
 
                 // notify observers
                 onResultListener.onDisconnectSuccessful()
+
+                // calling of disconnect() means that we successfully connected and published message
+                onResultListener.onForwardingSuccessful()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
@@ -204,7 +213,6 @@ class NfcMqttForwarder(private val application: Application,
 
     companion object {
         private val TAG = NfcMqttForwarder::class.java.simpleName
-        private const val MSG_SEPARATOR = ";"
 
         /**
          * Filters on intents supported by the library.

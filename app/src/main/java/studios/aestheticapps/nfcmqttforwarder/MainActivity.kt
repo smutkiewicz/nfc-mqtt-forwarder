@@ -11,6 +11,7 @@ class MainActivity : AppCompatActivity(), OnForwardResultListener {
         application,
         resources.getString(R.string.serverUri),
         resources.getString(R.string.defaultTopic),
+        clientId = "courier001",
         messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD_ARRAY,
         onResultListener = this)
     }
@@ -34,9 +35,16 @@ class MainActivity : AppCompatActivity(), OnForwardResultListener {
         }
     }
 
-    override fun onPublishSuccessful() {
-        super.onPublishSuccessful()
-        Log.d(javaClass.toString(), "Reacting for successfully published msg!")
+    override fun onForwardingError() {
+        Log.d(TAG, "Reacting for error in forwarding!")
+    }
+
+    override fun onForwardingSuccessful() {
+        Log.d(TAG, "Reacting for successfully forwarded msg!")
+    }
+
+    companion object {
+        val TAG = "MainActivity"
     }
 }
 
