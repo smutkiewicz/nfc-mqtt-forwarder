@@ -9,7 +9,10 @@ import android.nfc.Tag
 import android.os.Build
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
-import org.eclipse.paho.client.mqttv3.*
+import org.eclipse.paho.client.mqttv3.IMqttActionListener
+import org.eclipse.paho.client.mqttv3.IMqttToken
+import org.eclipse.paho.client.mqttv3.MqttClient
+import org.eclipse.paho.client.mqttv3.MqttMessage
 import java.nio.charset.StandardCharsets
 
 /**
@@ -18,9 +21,10 @@ import java.nio.charset.StandardCharsets
  */
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
-                       private val topic: String,
+                       private val defaultTopic: String,
                        private val clientId: String = MqttClient.generateClientId(),
-                       private val messageType: MessageType = MessageType.ONLY_PAYLOAD) {
+                       private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
+                       private val onResultListener: OnForwardResultListener) {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
 
@@ -31,11 +35,11 @@ class NfcMqttForwarder(private val application: Application,
      *
      * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
      */
-    fun processNfcIntent(intent: Intent) {
+    fun processNfcIntent(intent: Intent, topic: String = defaultTopic) {
         Log.d(TAG, "Processing intent of type " + intent.action + ".")
         when {
-            isActionAnNdefNfcIntent(intent.action!!) -> processNdefMessageFrom(intent)
-            isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent)
+            isActionAnNdefNfcIntent(intent.action!!) -> processNdefMessageFrom(intent, topic)
+            isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent, topic)
             else -> Log.d(TAG, application.getString(R.string.non_nfc_intent_detected))
         }
     }
@@ -43,12 +47,12 @@ class NfcMqttForwarder(private val application: Application,
     /**
      * Parses all NDEF Messages from the intent and sends it to server.
      */
-    private fun processNdefMessageFrom(intent: Intent) {
+    private fun processNdefMessageFrom(intent: Intent, topic: String) {
         intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)?.also { rawMsgs ->
             rawMsgs.forEach {
                 (it as NdefMessage).apply {
                     val message = createMessage(records)
-                    connectToServerAndTryToPublishMessage(message)
+                    connectToServerAndTryToPublishMessage(message, topic)
                 }
             }
         }
@@ -63,10 +67,10 @@ class NfcMqttForwarder(private val application: Application,
      * and there are some tags with no ID at all (the byte array will be zero-sized),
      * so do not rely on such a method of identifying tags unless you're sure your tags have stable UID.
      */
-    private fun processTagFrom(intent: Intent) {
+    private fun processTagFrom(intent: Intent, topic: String) {
         intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)?.also {
             val message = createMessage(arrayOf(it.id.toString()))
-            connectToServerAndTryToPublishMessage(message)
+            connectToServerAndTryToPublishMessage(message, topic)
         }
     }
 
@@ -76,9 +80,9 @@ class NfcMqttForwarder(private val application: Application,
     private fun createMessage(records: Array<NdefRecord>) : String {
         val serializer = JsonSerializer()
         val message = when (messageType) {
-            MessageType.FULL_NDEF_MESSAGE -> serializer.arrayToJson(records.asList())
-            MessageType.ONLY_PAYLOAD -> serializer.arrayToJson(records.map { convertBytesToString(it.payload) })
-            MessageType.ONLY_UID_RID -> serializer.arrayToJson(records.map { it.id })
+            MessageType.NDEF_MESSAGE_ARRAY -> serializer.arrayToJson(records.asList())
+            MessageType.ONLY_PAYLOAD_ARRAY -> serializer.arrayToJson(records.map { convertBytesToString(it.payload) })
+            MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY -> serializer.arrayToJson(records.map { it.id })
         }
 
         Log.d(TAG, "Created message of type " + messageType.name + " = \"$message\"")
@@ -86,13 +90,13 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     /**
-     * Creates message for MQTT server of type MessageType.ONLY_UID_RID, used when non-NDEF tag was detected."
+     * Creates message for MQTT server of type MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY, used when non-NDEF tag was detected."
      */
     private fun createMessage(records: Array<String>) : String {
         val serializer = JsonSerializer()
         val message = serializer.arrayToJson(records.map { convertBytesToString(it.toByteArray()) })
 
-        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID.name + " = \"$message\"")
+        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$message\"")
         return message
     }
 
@@ -114,38 +118,46 @@ class NfcMqttForwarder(private val application: Application,
     private fun isActionAnNfcIntent(action: String) : Boolean =
         NfcAdapter.ACTION_TECH_DISCOVERED == action || NfcAdapter.ACTION_TAG_DISCOVERED == action
 
-    private fun connectToServerAndTryToPublishMessage(payload: String) {
-        val options = MqttConnectOptions()
-        options.userName = "username"
-        options.password = "password".toCharArray()
-
+    private fun connectToServerAndTryToPublishMessage(payload: String, topic: String) {
         // connect to MQTT Server
-        client.connect(options).actionCallback = object : IMqttActionListener {
+        client.connect().actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.d(TAG, "Successfully connected to $serverUri.")
 
                 // try to publish message
-                publishMessage(payload)
+                publishMessage(payload, topic)
 
                 // disconnect
                 disconnectFromServer()
+
+                // notify observers
+                onResultListener.onConnectSuccessful()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.d(TAG, application.getString(R.string.server_connection_failure))
+
+                // notify observers
+                onResultListener.onConnectError(application.getString(R.string.server_connection_failure))
             }
         }
     }
 
-    private fun publishMessage(payload: String) {
+    private fun publishMessage(payload: String, topic: String) {
         val message = MqttMessage(payload.toByteArray())
         client.publish(topic, message).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.d(TAG, "Successfully published to $serverUri.")
+
+                // notify observers
+                onResultListener.onPublishSuccessful()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.d(TAG, application.resources.getString(R.string.server_publish_failure))
+
+                // notify observers
+                onResultListener.onPublishError(application.resources.getString(R.string.server_publish_failure))
             }
         }
     }
@@ -154,10 +166,16 @@ class NfcMqttForwarder(private val application: Application,
         client.disconnect().actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.d(TAG, "Successfully disconnected from $serverUri.")
+
+                // notify observers
+                onResultListener.onDisconnectSuccessful()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.d(TAG, application.resources.getString(R.string.server_disconnection_failure))
+
+                // notify observers
+                onResultListener.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
             }
         }
     }
@@ -168,20 +186,20 @@ class NfcMqttForwarder(private val application: Application,
     enum class MessageType {
 
         /**
-         * ONLY_UID_RID sets Forwarder to send raw unconverted low-level UID/RID of an nfc tag,
+         * ONLY_UID_RID_ONE_ENTRY_ARRAY sets Forwarder to send raw unconverted low-level UID/RID of an nfc tag,
          * used automatically when no NDEF content is detected.
          */
-        ONLY_UID_RID,
+        ONLY_UID_RID_ONE_ENTRY_ARRAY,
 
         /**
-         * ONLY_PAYLOAD sets Forwarder to send only String UTF-converted payload content read from NdefRecord.
+         * ONLY_PAYLOAD_ARRAY sets Forwarder to send only String UTF-converted payload content read from NdefRecord.
          */
-        ONLY_PAYLOAD,
+        ONLY_PAYLOAD_ARRAY,
 
         /**
-         * FULL_NDEF_MESSAGE sets Forwarder to send also raw unconverted info about tnf, type and payload.
+         * NDEF_MESSAGE_ARRAY sets Forwarder to send also raw unconverted info about tnf, type and payload.
          */
-        FULL_NDEF_MESSAGE
+        NDEF_MESSAGE_ARRAY
     }
 
     companion object {

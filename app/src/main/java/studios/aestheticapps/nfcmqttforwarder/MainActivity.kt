@@ -5,13 +5,14 @@ import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 
-private const val serverUri = "tcp://10.10.80.52:1883"
+private const val serverUri = "sampleUri.com"
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), OnForwardResultListener {
 
     private val forwarder: NfcMqttForwarder by lazy { NfcMqttForwarder(
         application, serverUri, "couriers/test",
-        messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD)
+        messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD_ARRAY,
+        onResultListener = this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +32,11 @@ class MainActivity : AppCompatActivity() {
         if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
             forwarder.processNfcIntent(intent)
         }
+    }
+
+    override fun onPublishSuccessful() {
+        super.onPublishSuccessful()
+        Log.d(javaClass.toString(), "Reacting for successfully published msg!")
     }
 }
 
