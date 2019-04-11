@@ -5,12 +5,12 @@ import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 
-private const val serverUri = "sampleUri.com"
-
 class MainActivity : AppCompatActivity(), OnForwardResultListener {
 
     private val forwarder: NfcMqttForwarder by lazy { NfcMqttForwarder(
-        application, serverUri, "couriers/test",
+        application,
+        resources.getString(R.string.serverUri),
+        resources.getString(R.string.defaultTopic),
         messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD_ARRAY,
         onResultListener = this)
     }
