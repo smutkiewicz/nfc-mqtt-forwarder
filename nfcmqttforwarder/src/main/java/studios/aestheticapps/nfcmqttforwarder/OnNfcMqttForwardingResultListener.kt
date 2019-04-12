@@ -3,7 +3,7 @@ package studios.aestheticapps.nfcmqttforwarder
 /**
  * Interface helping developer react on forwarding results.
  */
-interface OnForwardResultListener {
+interface OnNfcMqttForwardingResultListener {
 
     /**
      * Called when whole forwarding process (connect-publish-disconnect) succeeds.
@@ -17,28 +17,13 @@ interface OnForwardResultListener {
 
     fun onConnectSuccessful() {}
 
-    /**
-     * Needs calling super when overrided.
-     */
-    fun onConnectError(message: String) {
-        onForwardingError()
-    }
+    fun onConnectError(message: String) {}
 
     fun onPublishSuccessful() {}
 
-    /**
-     * Needs calling super when overrided.
-     */
-    fun onPublishError(message: String) {
-        onForwardingError()
-    }
+    fun onPublishError(message: String) {}
 
     fun onDisconnectSuccessful() {}
 
-    /**
-     * Needs calling super when overrided.
-     */
-    fun onDisconnectError(message: String) {
-        onForwardingError()
-    }
+    fun onDisconnectError(message: String) {}
 }

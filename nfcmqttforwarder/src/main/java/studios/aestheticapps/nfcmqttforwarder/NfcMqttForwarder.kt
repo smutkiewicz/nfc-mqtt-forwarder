@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets
 /**
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Server.
- * @property connectionTimeout Timeout, measured in seconds.
+ * @property connectionTimeout Timeout, measured in seconds, default is 10s.
  */
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
@@ -23,7 +23,7 @@ class NfcMqttForwarder(private val application: Application,
                        private val clientId: String = MqttClient.generateClientId(),
                        private val connectionTimeout: Int = 10,
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
-                       private val onResultListener: OnForwardResultListener) {
+                       private val onResultListener: OnNfcMqttForwardingResultListener) {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
 
@@ -35,7 +35,7 @@ class NfcMqttForwarder(private val application: Application,
      * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
      */
     fun processNfcIntent(intent: Intent, topic: String = defaultTopic) {
-        Log.d(TAG, "Processing intent of type " + intent.action + ".")
+        Log.i(TAG, "Processing intent of type " + intent.action + ".")
         when {
             isActionAnNdefNfcIntent(intent.action!!) -> processNdefMessageFrom(intent, topic)
             isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent, topic)
@@ -84,7 +84,7 @@ class NfcMqttForwarder(private val application: Application,
             MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY -> serializer.arrayToJson(records.map { it.id })
         }
 
-        Log.d(TAG, "Created message of type " + messageType.name + " = \"$message\"")
+        Log.i(TAG, "Created message of type " + messageType.name + " = \"$message\"")
         return message
     }
 
@@ -121,7 +121,7 @@ class NfcMqttForwarder(private val application: Application,
         // connect to MQTT Server
         client.connect(obtainOptions()).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.d(TAG, "Successfully connected to $serverUri.")
+                Log.i(TAG, "Successfully connected to $serverUri.")
 
                 // notify observers
                 onResultListener.onConnectSuccessful()
@@ -131,10 +131,11 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.d(TAG, application.getString(R.string.server_connection_failure))
+                Log.e(TAG, application.getString(R.string.server_connection_failure))
 
                 // notify observers
                 onResultListener.onConnectError(application.getString(R.string.server_connection_failure))
+                onResultListener.onForwardingError()
             }
         }
     }
@@ -150,7 +151,7 @@ class NfcMqttForwarder(private val application: Application,
         val message = MqttMessage(payload.toByteArray())
         client.publish(topic, message).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.d(TAG, "Successfully published to $serverUri.")
+                Log.i(TAG, "Successfully published to $serverUri.")
 
                 // notify observers
                 onResultListener.onPublishSuccessful()
@@ -160,10 +161,11 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.d(TAG, application.resources.getString(R.string.server_publish_failure))
+                Log.e(TAG, application.resources.getString(R.string.server_publish_failure))
 
                 // notify observers
                 onResultListener.onPublishError(application.resources.getString(R.string.server_publish_failure))
+                onResultListener.onForwardingError()
             }
         }
     }
@@ -171,7 +173,7 @@ class NfcMqttForwarder(private val application: Application,
     private fun disconnectFromServer() {
         client.disconnect().actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.d(TAG, "Successfully disconnected from $serverUri.")
+                Log.i(TAG, "Successfully disconnected from $serverUri.")
 
                 // notify observers
                 onResultListener.onDisconnectSuccessful()
@@ -181,10 +183,11 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.d(TAG, application.resources.getString(R.string.server_disconnection_failure))
+                Log.e(TAG, application.resources.getString(R.string.server_disconnection_failure))
 
                 // notify observers
                 onResultListener.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
+                onResultListener.onForwardingError()
             }
         }
     }

@@ -33,4 +33,16 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0-alpha4'
 
     api project(':nfcmqttforwarder')
+
+    implementation(
+            'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.1.0',
+            'org.eclipse.paho:org.eclipse.paho.android.service:1.1.1',
+            'com.google.code.gson:gson:2.8.5'
+    )
+}
+
+repositories {
+    maven {
+        url "https://repo.eclipse.org/content/repositories/paho-snapshots/"
+    }
 }
