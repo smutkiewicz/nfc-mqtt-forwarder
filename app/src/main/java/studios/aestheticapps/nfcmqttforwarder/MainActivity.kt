@@ -18,6 +18,7 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
         defaultTopic = resources.getString(R.string.defaultTopic, clientId),
         clientId = clientId,
         messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD_ARRAY,
+        automaticDisconnectAfterForwarding = false,
         onResultListener = this)
     }
 
@@ -35,6 +36,11 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
         processNfcOperations(intent)
     }
 
+    override fun onStop() {
+        super.onStop()
+        forwarder.disconnectFromServer()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         processNfcOperations(intent)
@@ -43,8 +49,8 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
     private fun processNfcOperations(intent: Intent) {
         Log.d("TAG", "New NFC intent")
         if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
-            forwarder.processNfcIntent(intent)
             subscriber.subscribeToTopicAndReceiveResponse()
+            forwarder.processNfcIntent(intent)
         }
     }
 
@@ -59,6 +65,8 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
     override fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {
         Toast.makeText(this,
             "Message arrived on topic = $topic with msg = \"$message\".", Toast.LENGTH_SHORT).show()
+        subscriber.unsubscribeFromTopic(topic!!)
+        forwarder.disconnectFromServer()
     }
 
     companion object {

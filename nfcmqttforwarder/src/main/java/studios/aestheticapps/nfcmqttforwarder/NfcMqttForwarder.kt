@@ -16,30 +16,60 @@ import java.nio.charset.StandardCharsets
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Server.
  * @property connectionTimeout Timeout, measured in seconds, default is 10s.
+ * @property automaticDisconnectAfterForwarding Default set as true, set false if you have other object using connection with same clientId.
+ * @property encryptionEnabled Tells whether messages should be encrypted, default set to false.
  */
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
                        private val defaultTopic: String,
                        private val clientId: String = MqttClient.generateClientId(),
                        private val connectionTimeout: Int = 10,
+                       private val automaticDisconnectAfterForwarding: Boolean = true,
+                       private val encryptionEnabled: Boolean = false,
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
                        private val onResultListener: OnNfcMqttForwardingResultListener) {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
 
+    // Needed to block any multiple connection callbacks.
+    private var wantsToForwardMsg = false
+
     /**
      * Pushes raw String message containing all NDEF records as Json list (for NDEF_ACTION intents type) or
      * NFC low-level tag UID/RID as single-entry Json list with tagUid (when Intent action is of type TECH_ACTION or TAG_ACTION)
      * directly to topic on MQTT Server provided by user (specified by serverUri).
+     * Automatically connects user to server.
      *
      * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
      */
     fun processNfcIntent(intent: Intent, topic: String = defaultTopic) {
         Log.i(TAG, "Processing intent of type " + intent.action + ".")
+
+        // needed to block any multiple connection callbacks
+        wantsToForwardMsg = true
+
         when {
             isActionAnNdefNfcIntent(intent.action!!) -> processNdefMessageFrom(intent, topic)
             isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent, topic)
             else -> Log.d(TAG, application.getString(R.string.non_nfc_intent_detected))
+        }
+    }
+
+    fun disconnectFromServer() {
+        client.takeIf { it.isConnected }?.disconnect()?.actionCallback = object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken) {
+                Log.i(TAG, "Successfully disconnected from $serverUri.")
+
+                // notify observers
+                onResultListener.onDisconnectSuccessful()
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
+                Log.e(TAG, application.resources.getString(R.string.server_disconnection_failure))
+
+                // notify observers
+                onResultListener.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
+            }
         }
     }
 
@@ -118,6 +148,13 @@ class NfcMqttForwarder(private val application: Application,
         NfcAdapter.ACTION_TECH_DISCOVERED == action || NfcAdapter.ACTION_TAG_DISCOVERED == action
 
     private fun connectToServerAndTryToPublishMessage(payload: String, topic: String) {
+        // check if client is already connected
+        client.takeIf { it.isConnected }?.let {
+            // try to publish message
+            publishMessage(payload, topic)
+            return
+        }
+
         // connect to MQTT Server
         client.connect(obtainOptions()).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
@@ -148,16 +185,23 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     private fun publishMessage(payload: String, topic: String) {
+        // if msg is already published, don't try to do this again
+        if (!wantsToForwardMsg) return
+        else wantsToForwardMsg = false
+
         val message = MqttMessage(payload.toByteArray())
         client.publish(topic, message).actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.i(TAG, "Successfully published to $serverUri.")
+                Log.w(TAG, "Successfully published to $serverUri.")
 
                 // notify observers
                 onResultListener.onPublishSuccessful()
 
-                // disconnect
-                disconnectFromServer()
+                // successfully connected and published message
+                onResultListener.onForwardingSuccessful()
+
+                // disconnect if needed
+                if (automaticDisconnectAfterForwarding) disconnectFromServer()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
@@ -165,28 +209,6 @@ class NfcMqttForwarder(private val application: Application,
 
                 // notify observers
                 onResultListener.onPublishError(application.resources.getString(R.string.server_publish_failure))
-                onResultListener.onForwardingError()
-            }
-        }
-    }
-
-    private fun disconnectFromServer() {
-        client.disconnect().actionCallback = object : IMqttActionListener {
-            override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.i(TAG, "Successfully disconnected from $serverUri.")
-
-                // notify observers
-                onResultListener.onDisconnectSuccessful()
-
-                // calling of disconnect() means that we successfully connected and published message
-                onResultListener.onForwardingSuccessful()
-            }
-
-            override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.e(TAG, application.resources.getString(R.string.server_disconnection_failure))
-
-                // notify observers
-                onResultListener.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
                 onResultListener.onForwardingError()
             }
         }

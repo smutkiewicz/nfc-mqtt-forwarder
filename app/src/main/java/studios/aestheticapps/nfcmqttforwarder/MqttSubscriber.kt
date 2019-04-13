@@ -12,16 +12,23 @@ class MqttSubscriber(private val application: Application,
                      private val onSubscriptionListener: OnSubscriptionListener) : MqttCallback {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
+    private val subscribedTo: HashMap<String, Boolean> = HashMap()
 
-    override fun messageArrived(topic: String?, message: MqttMessage?) {
-        Log.i(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
-        unsubscribeFromTopic(topic!!)
+    init {
+        client.setCallback(this)
+    }
+
+    override fun messageArrived(topic: String, message: MqttMessage?) {
+        // check if we're expecting messages from this topic
+        if (subscribedTo[topic] == false) return
+
+        Log.w(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
 
         // notify observers
         onSubscriptionListener.onSubscriptionMessageArrived(topic, message)
 
-        // finish tasks by disconnecting
-        client.disconnect()
+        // release topic
+        subscribedTo[topic] = false
     }
 
     override fun connectionLost(cause: Throwable?) {
@@ -31,16 +38,47 @@ class MqttSubscriber(private val application: Application,
     override fun deliveryComplete(token: IMqttDeliveryToken?) {}
 
     fun subscribeToTopicAndReceiveResponse(subscriptionTopic: String = defaultSubscriptionTopic) {
-        connectToServer(subscriptionTopic)
+        connectToServerAndSubscribe(subscriptionTopic)
     }
 
-    private fun connectToServer(topic: String) {
+    fun unsubscribeFromTopic(topic: String) {
+        client.takeIf { it.isConnected }?.unsubscribe(topic)?.actionCallback = object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken) {
+                Log.i(TAG, "Successfully unsubscribed $topic.")
+                subscribedTo.remove(topic)
+                Log.d(TAG, "Subscriber of = $subscribedTo")
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
+                Log.e(TAG, "Failed unsubscribing $topic.")
+            }
+        }
+    }
+
+    fun unsubscribeFromAllTopicsAndDisconnect() {
+        subscribedTo.forEach { unsubscribeFromTopic(it.key) }
+        client.takeIf { it.isConnected }?.disconnect()?.actionCallback = object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken) {
+                Log.i(TAG, "Successfully disconnected from $serverUri.")
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
+                Log.e(TAG, application.resources.getString(R.string.server_disconnection_failure))
+            }
+        }
+    }
+
+    private fun connectToServerAndSubscribe(topic: String) {
+        // check if client is already connected
+        client.takeIf { it.isConnected }?.let {
+            subscribeToTopic(topic)
+            return
+        }
+
         // connect to MQTT Server
-        client.setCallback(this)
-        client.connect(obtainOptions()).actionCallback = object : IMqttActionListener {
+        client.connect().actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.i(TAG, "Successfully connected to $serverUri.")
-
                 subscribeToTopic(topic)
             }
 
@@ -60,19 +98,23 @@ class MqttSubscriber(private val application: Application,
     }
 
     private fun subscribeToTopic(topic: String) {
-        client.subscribe(topic, 1, null, object : IMqttActionListener {
+        // don't try to subscribe to already subscribed
+        if (subscribedTo.containsKey(topic) && subscribedTo[topic] == true) return
+
+        client.subscribe(topic, 0, null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.i(TAG, "Subscribed to $topic!")
+
+                // mark waiting for response
+                subscribedTo[topic] = true
+
+                Log.d(TAG, "Subscriber of = $subscribedTo")
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(TAG, "Subscription to $topic failed!")
             }
         })
-    }
-
-    private fun unsubscribeFromTopic(topic: String) {
-        client.unsubscribe(topic)
     }
 
     interface OnSubscriptionListener {
