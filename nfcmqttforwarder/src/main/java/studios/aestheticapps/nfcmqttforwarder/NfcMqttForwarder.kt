@@ -12,6 +12,7 @@ import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
 import java.nio.charset.StandardCharsets
 
+
 /**
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Server.
@@ -26,6 +27,7 @@ class NfcMqttForwarder(private val application: Application,
                        private val connectionTimeout: Int = 10,
                        private val automaticDisconnectAfterForwarding: Boolean = true,
                        private val encryptionEnabled: Boolean = false,
+                       private val encryptionKey: String = "default_key",
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
                        private val onResultListener: OnNfcMqttForwardingResultListener) {
 
@@ -49,7 +51,11 @@ class NfcMqttForwarder(private val application: Application,
         wantsToForwardMsg = true
 
         when {
-            isActionAnNdefNfcIntent(intent.action!!) -> processNdefMessageFrom(intent, topic)
+            isActionAnNdefNfcIntent(intent.action!!) -> {
+                if (messageType == MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY) processTagFrom(intent, topic)
+                else processNdefMessageFrom(intent, topic)
+            }
+
             isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent, topic)
             else -> Log.d(TAG, application.getString(R.string.non_nfc_intent_detected))
         }
@@ -111,7 +117,7 @@ class NfcMqttForwarder(private val application: Application,
         val message = when (messageType) {
             MessageType.NDEF_MESSAGE_ARRAY -> serializer.arrayToJson(records.asList())
             MessageType.ONLY_PAYLOAD_ARRAY -> serializer.arrayToJson(records.map { convertBytesToString(it.payload) })
-            MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY -> serializer.arrayToJson(records.map { it.id })
+            else -> ""
         }
 
         Log.i(TAG, "Created message of type " + messageType.name + " = \"$message\"")
@@ -123,16 +129,18 @@ class NfcMqttForwarder(private val application: Application,
      */
     private fun createMessage(records: Array<String>) : String {
         val serializer = JsonSerializer()
-        val message = serializer.arrayToJson(records.map { convertBytesToString(it.toByteArray()) })
+        val message = serializer.arrayToJson(records.map { StringConverter.bytesToHexString(it.toByteArray()) })
 
         Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$message\"")
         return message
     }
 
     private fun convertBytesToString(byteArray: ByteArray) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-        String(byteArray, StandardCharsets.UTF_8)
+        val msg = String(byteArray, StandardCharsets.UTF_8)
+        if (encryptionEnabled) DesEncrypter(encryptionKey).encrypt(msg) else msg
     } else {
-        String(byteArray)
+        val msg = String(byteArray)
+        if (encryptionEnabled) DesEncrypter(encryptionKey).encrypt(msg) else msg
     }
 
     /**
@@ -170,6 +178,8 @@ class NfcMqttForwarder(private val application: Application,
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(TAG, application.getString(R.string.server_connection_failure))
 
+                wantsToForwardMsg = false
+
                 // notify observers
                 onResultListener.onConnectError(application.getString(R.string.server_connection_failure))
                 onResultListener.onForwardingError()
@@ -206,6 +216,8 @@ class NfcMqttForwarder(private val application: Application,
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(TAG, application.resources.getString(R.string.server_publish_failure))
+
+                wantsToForwardMsg = false
 
                 // notify observers
                 onResultListener.onPublishError(application.resources.getString(R.string.server_publish_failure))
