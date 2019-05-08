@@ -3,7 +3,7 @@ package studios.aestheticapps.nfcmqttforwarder
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 
-class JsonSerializer {
+internal class JsonSerializer {
 
     fun <T> arrayToJson(stream: List<T>): String =
         GsonBuilder()

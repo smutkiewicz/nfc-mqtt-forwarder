@@ -18,8 +18,9 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
         defaultTopic = resources.getString(R.string.defaultTopic, clientId),
         clientId = clientId,
         messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD_ARRAY,
+        connectionTimeout = 2,
         automaticDisconnectAfterForwarding = false,
-        encryptionEnabled = false,
+        encryptionEnabled = true,
         encryptionKey = resources.getString(R.string.secretKey),
         onResultListener = this)
     }

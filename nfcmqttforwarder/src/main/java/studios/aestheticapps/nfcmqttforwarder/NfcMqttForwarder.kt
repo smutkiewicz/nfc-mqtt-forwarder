@@ -10,6 +10,7 @@ import android.os.Build
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
+import studios.aestheticapps.nfcmqttforwarder.encryption.AesEncrypter
 import java.nio.charset.StandardCharsets
 
 
@@ -137,10 +138,10 @@ class NfcMqttForwarder(private val application: Application,
 
     private fun convertBytesToString(byteArray: ByteArray) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
         val msg = String(byteArray, StandardCharsets.UTF_8)
-        if (encryptionEnabled) DesEncrypter(encryptionKey).encrypt(msg) else msg
+        if (encryptionEnabled) AesEncrypter.encrypt(msg, encryptionKey) else msg
     } else {
         val msg = String(byteArray)
-        if (encryptionEnabled) DesEncrypter(encryptionKey).encrypt(msg) else msg
+        if (encryptionEnabled) AesEncrypter.encrypt(msg, encryptionKey) else msg
     }
 
     /**
