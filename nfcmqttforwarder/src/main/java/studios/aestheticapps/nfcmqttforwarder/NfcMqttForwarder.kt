@@ -11,6 +11,8 @@ import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
 import studios.aestheticapps.nfcmqttforwarder.encryption.AesEncrypter
+import studios.aestheticapps.nfcmqttforwarder.util.JsonSerializer
+import studios.aestheticapps.nfcmqttforwarder.util.StringConverter
 import java.nio.charset.StandardCharsets
 
 
@@ -121,8 +123,10 @@ class NfcMqttForwarder(private val application: Application,
             else -> ""
         }
 
-        Log.i(TAG, "Created message of type " + messageType.name + " = \"$message\"")
-        return message
+        val cryptedMessage = if (encryptionEnabled) AesEncrypter.encrypt(message, encryptionKey) else message
+        Log.i(TAG, "Created message of type " + messageType.name + " = \"$cryptedMessage\"")
+
+        return cryptedMessage
     }
 
     /**
@@ -132,16 +136,16 @@ class NfcMqttForwarder(private val application: Application,
         val serializer = JsonSerializer()
         val message = serializer.arrayToJson(records.map { StringConverter.bytesToHexString(it.toByteArray()) })
 
-        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$message\"")
-        return message
+        val cryptedMessage = if (encryptionEnabled) AesEncrypter.encrypt(message, encryptionKey) else message
+        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$cryptedMessage\"")
+
+        return cryptedMessage
     }
 
     private fun convertBytesToString(byteArray: ByteArray) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-        val msg = String(byteArray, StandardCharsets.UTF_8)
-        if (encryptionEnabled) AesEncrypter.encrypt(msg, encryptionKey) else msg
+        String(byteArray, StandardCharsets.UTF_8)
     } else {
-        val msg = String(byteArray)
-        if (encryptionEnabled) AesEncrypter.encrypt(msg, encryptionKey) else msg
+        String(byteArray)
     }
 
     /**
@@ -225,28 +229,6 @@ class NfcMqttForwarder(private val application: Application,
                 onResultListener.onForwardingError()
             }
         }
-    }
-
-    /**
-     * Formats content sent in messages to MQTT server.
-     */
-    enum class MessageType {
-
-        /**
-         * ONLY_UID_RID_ONE_ENTRY_ARRAY sets Forwarder to send raw unconverted low-level UID/RID of an nfc tag,
-         * used automatically when no NDEF content is detected.
-         */
-        ONLY_UID_RID_ONE_ENTRY_ARRAY,
-
-        /**
-         * ONLY_PAYLOAD_ARRAY sets Forwarder to send only String UTF-converted payload content read from NdefRecord.
-         */
-        ONLY_PAYLOAD_ARRAY,
-
-        /**
-         * NDEF_MESSAGE_ARRAY sets Forwarder to send also raw unconverted info about tnf, type and payload.
-         */
-        NDEF_MESSAGE_ARRAY
     }
 
     companion object {

@@ -1,4 +1,4 @@
-package studios.aestheticapps.nfcmqttforwarder
+package studios.aestheticapps.nfcmqttforwarder.util
 
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken

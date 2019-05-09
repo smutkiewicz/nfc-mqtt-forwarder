@@ -13,6 +13,7 @@ internal object AesEncrypter {
 
     private const val charsetName = "UTF-8"
     private const val algorithm = "AES"
+    private const val transformation = "AES/ECB/PKCS5Padding"
     private const val keySize = 16
 
     private val TAG = AesEncrypter::class.java.simpleName
@@ -22,7 +23,7 @@ internal object AesEncrypter {
     fun encrypt(strToEncrypt: String, secret: String): String {
         try {
             setKey(secret)
-            val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+            val cipher = Cipher.getInstance(transformation)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
             return encodeToString(cipher.doFinal(strToEncrypt.toByteArray(charset("UTF-8"))), DEFAULT)
         } catch (e: Exception) {
@@ -35,7 +36,7 @@ internal object AesEncrypter {
     fun decrypt(strToDecrypt: String, secret: String): String {
         try {
             setKey(secret)
-            val cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING")
+            val cipher = Cipher.getInstance(transformation)
             cipher.init(Cipher.DECRYPT_MODE, secretKey)
             return String(cipher.doFinal(decode(strToDecrypt, Base64.DEFAULT)))
         } catch (e: Exception) {

@@ -1,6 +1,6 @@
-package studios.aestheticapps.nfcmqttforwarder;
+package studios.aestheticapps.nfcmqttforwarder.util;
 
-class StringConverter {
+public class StringConverter {
 
     public static String bytesToHexString(byte[] src) {
         StringBuilder stringBuilder = new StringBuilder("0x");
