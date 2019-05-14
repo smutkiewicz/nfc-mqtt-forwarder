@@ -1,4 +1,4 @@
-package studios.aestheticapps.nfcmqttforwarder
+package studios.aestheticapps.nfcmqttforwarder.forwarder
 
 /**
  * Formats content sent in messages to MQTT server.

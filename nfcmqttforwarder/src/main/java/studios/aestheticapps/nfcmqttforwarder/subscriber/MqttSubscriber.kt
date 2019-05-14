@@ -1,15 +1,18 @@
-package studios.aestheticapps.nfcmqttforwarder
+package studios.aestheticapps.nfcmqttforwarder.subscriber
 
 import android.app.Application
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
+import studios.aestheticapps.nfcmqttforwarder.R
+import studios.aestheticapps.nfcmqttforwarder.forwarder.OnNfcMqttForwardingResultListener
 
-class MqttSubscriber(private val application: Application,
-                     private val serverUri: String,
-                     private val defaultSubscriptionTopic: String,
-                     private val clientId: String = MqttClient.generateClientId(),
-                     private val onSubscriptionListener: OnSubscriptionListener) : MqttCallback {
+internal class MqttSubscriber(private val application: Application,
+                              private val serverUri: String,
+                              private val defaultSubscriptionTopic: String,
+                              private val clientId: String = MqttClient.generateClientId(),
+                              private val onSubscriptionListener: OnNfcMqttForwardingResultListener
+) : MqttCallback {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
     private val subscribedTo: HashMap<String, Boolean> = HashMap()
@@ -24,16 +27,17 @@ class MqttSubscriber(private val application: Application,
 
         Log.w(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
 
-        // notify observers
-        onSubscriptionListener.onSubscriptionMessageArrived(topic, message)
-
         // release topic
         subscribedTo[topic] = false
+
+        // unsubscribe
+        unsubscribeFromTopic(topic)
+
+        // notify observers
+        onSubscriptionListener.onSubscriptionMessageArrived(topic, message)
     }
 
-    override fun connectionLost(cause: Throwable?) {
-        Log.e(TAG, "Connection lost!")
-    }
+    override fun connectionLost(cause: Throwable?) {}
 
     override fun deliveryComplete(token: IMqttDeliveryToken?) {}
 
@@ -63,7 +67,10 @@ class MqttSubscriber(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.e(TAG, application.resources.getString(R.string.server_disconnection_failure))
+                Log.e(
+                    TAG, application.resources.getString(
+                        R.string.server_disconnection_failure
+                    ))
             }
         }
     }
@@ -115,12 +122,6 @@ class MqttSubscriber(private val application: Application,
                 Log.e(TAG, "Subscription to $topic failed!")
             }
         })
-    }
-
-    interface OnSubscriptionListener {
-
-        fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?)
-
     }
 
     companion object {

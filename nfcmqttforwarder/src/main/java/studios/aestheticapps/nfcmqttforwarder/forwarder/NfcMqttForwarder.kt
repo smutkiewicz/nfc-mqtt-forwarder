@@ -1,4 +1,4 @@
-package studios.aestheticapps.nfcmqttforwarder
+package studios.aestheticapps.nfcmqttforwarder.forwarder
 
 import android.app.Application
 import android.content.Intent
@@ -10,7 +10,8 @@ import android.os.Build
 import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
-import studios.aestheticapps.nfcmqttforwarder.encryption.AesEncrypter
+import studios.aestheticapps.nfcmqttforwarder.R
+import studios.aestheticapps.nfcmqttforwarder.subscriber.MqttSubscriber
 import studios.aestheticapps.nfcmqttforwarder.util.JsonSerializer
 import studios.aestheticapps.nfcmqttforwarder.util.StringConverter
 import java.nio.charset.StandardCharsets
@@ -21,20 +22,32 @@ import java.nio.charset.StandardCharsets
  * Processes NFC intent and sends its content directly to MQTT Server.
  * @property connectionTimeout Timeout, measured in seconds, default is 10s.
  * @property automaticDisconnectAfterForwarding Default set as true, set false if you have other object using connection with same clientId.
- * @property encryptionEnabled Tells whether messages should be encrypted, default set to false.
+ * @property subscribeForAResponse True if you want to listen to response from your MQTT server, set as false by default.
+ * @property responseTopic Specify if you want to listen to response from your MQTT server, set as defaultTopic by default.
  */
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
-                       private val defaultTopic: String,
                        private val clientId: String = MqttClient.generateClientId(),
+                       private val defaultTopic: String,
+                       private val responseTopic: String = defaultTopic,
+                       private val subscribeForAResponse: Boolean = false,
                        private val connectionTimeout: Int = 10,
                        private val automaticDisconnectAfterForwarding: Boolean = true,
-                       private val encryptionEnabled: Boolean = false,
-                       private val encryptionKey: String = "default_key",
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
-                       private val onResultListener: OnNfcMqttForwardingResultListener) {
+                       private val onResultListener: OnNfcMqttForwardingResultListener
+) {
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
+
+    private val subscriber: MqttSubscriber by lazy {
+        MqttSubscriber(
+            application,
+            serverUri = serverUri,
+            defaultSubscriptionTopic = responseTopic,
+            clientId = clientId,
+            onSubscriptionListener = onResultListener
+        )
+    }
 
     // Needed to block any multiple connection callbacks.
     private var wantsToForwardMsg = false
@@ -50,6 +63,9 @@ class NfcMqttForwarder(private val application: Application,
     fun processNfcIntent(intent: Intent, topic: String = defaultTopic) {
         Log.i(TAG, "Processing intent of type " + intent.action + ".")
 
+        // subscribe for response if needed
+        subscriber.takeIf { subscribeForAResponse }?.subscribeToTopicAndReceiveResponse()
+
         // needed to block any multiple connection callbacks
         wantsToForwardMsg = true
 
@@ -60,7 +76,10 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent, topic)
-            else -> Log.d(TAG, application.getString(R.string.non_nfc_intent_detected))
+            else -> Log.d(
+                TAG, application.getString(
+                    R.string.non_nfc_intent_detected
+                ))
         }
     }
 
@@ -74,7 +93,10 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.e(TAG, application.resources.getString(R.string.server_disconnection_failure))
+                Log.e(
+                    TAG, application.resources.getString(
+                        R.string.server_disconnection_failure
+                    ))
 
                 // notify observers
                 onResultListener.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
@@ -123,10 +145,9 @@ class NfcMqttForwarder(private val application: Application,
             else -> ""
         }
 
-        val cryptedMessage = if (encryptionEnabled) AesEncrypter.encrypt(message, encryptionKey) else message
-        Log.i(TAG, "Created message of type " + messageType.name + " = \"$cryptedMessage\"")
+        Log.i(TAG, "Created message of type " + messageType.name + " = \"$message\"")
 
-        return cryptedMessage
+        return message
     }
 
     /**
@@ -136,10 +157,9 @@ class NfcMqttForwarder(private val application: Application,
         val serializer = JsonSerializer()
         val message = serializer.arrayToJson(records.map { StringConverter.bytesToHexString(it.toByteArray()) })
 
-        val cryptedMessage = if (encryptionEnabled) AesEncrypter.encrypt(message, encryptionKey) else message
-        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$cryptedMessage\"")
+        Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$message\"")
 
-        return cryptedMessage
+        return message
     }
 
     private fun convertBytesToString(byteArray: ByteArray) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
@@ -181,7 +201,10 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.e(TAG, application.getString(R.string.server_connection_failure))
+                Log.e(
+                    TAG, application.getString(
+                        R.string.server_connection_failure
+                    ))
 
                 wantsToForwardMsg = false
 
@@ -220,7 +243,10 @@ class NfcMqttForwarder(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.e(TAG, application.resources.getString(R.string.server_publish_failure))
+                Log.e(
+                    TAG, application.resources.getString(
+                        R.string.server_publish_failure
+                    ))
 
                 wantsToForwardMsg = false
 

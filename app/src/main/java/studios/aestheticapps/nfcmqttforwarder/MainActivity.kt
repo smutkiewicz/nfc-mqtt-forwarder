@@ -6,30 +6,29 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import org.eclipse.paho.client.mqttv3.MqttMessage
+import studios.aestheticapps.nfcmqttforwarder.forwarder.MessageType
+import studios.aestheticapps.nfcmqttforwarder.forwarder.NfcMqttForwarder
+import studios.aestheticapps.nfcmqttforwarder.forwarder.OnNfcMqttForwardingResultListener
 
-class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, MqttSubscriber.OnSubscriptionListener {
+class MainActivity : AppCompatActivity(),
+    OnNfcMqttForwardingResultListener {
 
     // should be a result of login or sth
     private val clientId = "courier001"
 
-    private val forwarder: NfcMqttForwarder by lazy { NfcMqttForwarder(
-        application,
-        serverUri = resources.getString(R.string.serverUri),
-        defaultTopic = resources.getString(R.string.defaultTopic, clientId),
-        clientId = clientId,
-        messageType = NfcMqttForwarder.MessageType.ONLY_PAYLOAD_ARRAY,
-        connectionTimeout = 2,
-        automaticDisconnectAfterForwarding = false,
-        encryptionEnabled = true,
-        encryptionKey = resources.getString(R.string.secretKey),
-        onResultListener = this)
-    }
-
-    private val subscriber: MqttSubscriber by lazy { MqttSubscriber(application,
-        serverUri = resources.getString(R.string.serverUri, clientId),
-        defaultSubscriptionTopic = resources.getString(R.string.defaultSubscriptionTopic, clientId),
-        clientId = clientId,
-        onSubscriptionListener = this)
+    private val forwarder: NfcMqttForwarder by lazy {
+        NfcMqttForwarder(
+            application,
+            serverUri = getString(R.string.serverUri),
+            clientId = clientId,
+            defaultTopic = getString(R.string.defaultTopic, clientId),
+            subscribeForAResponse = false,
+            responseTopic = getString(R.string.defaultSubscriptionTopic, clientId),
+            messageType = MessageType.ONLY_PAYLOAD_ARRAY,
+            connectionTimeout = 2,
+            automaticDisconnectAfterForwarding = false,
+            onResultListener = this
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +51,6 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
     private fun processNfcOperations(intent: Intent) {
         Log.d("TAG", "New NFC intent")
         if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
-            subscriber.subscribeToTopicAndReceiveResponse()
             forwarder.processNfcIntent(intent)
         }
     }
@@ -66,9 +64,10 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener, Mqt
     }
 
     override fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {
+        Log.d(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
         Toast.makeText(this,
             "Message arrived on topic = $topic with msg = \"$message\".", Toast.LENGTH_SHORT).show()
-        subscriber.unsubscribeFromTopic(topic!!)
+
         forwarder.disconnectFromServer()
     }
 
