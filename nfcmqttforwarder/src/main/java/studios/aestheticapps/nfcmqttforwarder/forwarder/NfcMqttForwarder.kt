@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Server.
  * @property connectionTimeout Timeout, measured in seconds, default is 10s.
- * @property automaticDisconnectAfterForwarding Default set as true, set false if you have other object using connection with same clientId.
  * @property subscribeForAResponse True if you want to listen to response from your MQTT server, set as false by default.
  * @property responseTopic Specify if you want to listen to response from your MQTT server, set as defaultTopic by default.
  */
@@ -32,7 +31,6 @@ class NfcMqttForwarder(private val application: Application,
                        private val responseTopic: String = defaultTopic,
                        private val subscribeForAResponse: Boolean = false,
                        private val connectionTimeout: Int = 10,
-                       private val automaticDisconnectAfterForwarding: Boolean = true,
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
                        private val onResultListener: OnNfcMqttForwardingResultListener
 ) {
@@ -239,7 +237,7 @@ class NfcMqttForwarder(private val application: Application,
                 onResultListener.onForwardingSuccessful()
 
                 // disconnect if needed
-                if (automaticDisconnectAfterForwarding) disconnectFromServer()
+                disconnectFromServer()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
