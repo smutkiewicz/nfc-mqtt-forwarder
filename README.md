@@ -18,7 +18,7 @@ Simple NFC tag message MQTT forwarder based on Paho Android Service. Processes N
 - App level Gradle:
 ```   
    dependencies {
-         implementation "com.github.smutkiewicz:nfc-mqtt-forwarder:v0.2"
+         implementation "com.github.smutkiewicz:nfc-mqtt-forwarder:v0.8"
    }
 ```   
 3. Happy coding! :)
