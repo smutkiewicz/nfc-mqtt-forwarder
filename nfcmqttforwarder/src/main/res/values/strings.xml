@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">NfcMqttForwarder</string>
+    <string name="server_null_ssl_cert_failure">Null cert file! Provide client certificate file for caInputStream.
+        Launching default insecure connection instead…</string>
     <string name="server_connection_failure">Failed to connect to MQTT Server. Something went wrong e.g. connection
         timeout or firewall problems.
     </string>

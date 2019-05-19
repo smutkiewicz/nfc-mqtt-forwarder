@@ -22,11 +22,12 @@ class MainActivity : AppCompatActivity(),
             serverUri = getString(R.string.serverUri),
             clientId = clientId,
             defaultTopic = getString(R.string.defaultTopic, clientId),
-            subscribeForAResponse = false,
+            subscribeForAResponse = true,
             responseTopic = getString(R.string.defaultSubscriptionTopic, clientId),
+            subscriptionTimeout = 5,
+            isTlsEnabled = true,
+            caInputStream = application.assets.open("ca.crt"),
             messageType = MessageType.ONLY_PAYLOAD_ARRAY,
-            connectionTimeout = 2,
-            automaticDisconnectAfterForwarding = false,
             onResultListener = this
         )
     }
@@ -55,7 +56,7 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    override fun onForwardingError() {
+    override fun onForwardingError(message: String) {
         Log.d(TAG, "Reacting for error in forwarding!")
     }
 
@@ -67,8 +68,6 @@ class MainActivity : AppCompatActivity(),
         Log.d(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
         Toast.makeText(this,
             "Message arrived on topic = $topic with msg = \"$message\".", Toast.LENGTH_SHORT).show()
-
-        forwarder.disconnectFromServer()
     }
 
     companion object {

@@ -15,12 +15,22 @@ interface OnNfcMqttForwardingResultListener {
     /**
      * Called when whole forwarding process (connect-publish-disconnect) fails.
      */
-    fun onForwardingError()
+    fun onForwardingError(message: String)
 
     /**
      * Called when response subscription is enabled
      */
     fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {}
+
+    /**
+     * Called when response subscription is enabled
+     */
+    fun onSubscriptionSuccess() {}
+
+    /**
+     * Called when response subscription is enabled
+     */
+    fun onSubscriptionError(message: String) {}
 
     fun onConnectSuccessful() {}
 

@@ -11,26 +11,32 @@ import android.util.Log
 import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
 import studios.aestheticapps.nfcmqttforwarder.R
+import studios.aestheticapps.nfcmqttforwarder.ssl.SocketFactory
 import studios.aestheticapps.nfcmqttforwarder.subscriber.MqttSubscriber
 import studios.aestheticapps.nfcmqttforwarder.util.JsonSerializer
 import studios.aestheticapps.nfcmqttforwarder.util.StringConverter
+import java.io.InputStream
 import java.nio.charset.StandardCharsets
 
 
 /**
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Server.
- * @property connectionTimeout Timeout, measured in seconds, default is 10s.
- * @property subscribeForAResponse True if you want to listen to response from your MQTT server, set as false by default.
+ * @property subscribeForAResponse True if you want to listen to response from your MQTT server, set as false by default. If true, specify your responseTopic.
  * @property responseTopic Specify if you want to listen to response from your MQTT server, set as defaultTopic by default.
+ * @property subscriptionTimeout Timeout for response from server, measured in seconds, default is 10s. Subscriber automatically disconnects after this period.
+ * @property isTlsEnabled Set as true if your connection has to be tls-secured (ca.crt file required) set as false by default. If true, specify your caInputStream.
+ * @property caInputStream Specify input stream to your ssl client cert file.
  */
 class NfcMqttForwarder(private val application: Application,
                        private val serverUri: String,
                        private val clientId: String = MqttClient.generateClientId(),
                        private val defaultTopic: String,
-                       private val responseTopic: String = defaultTopic,
                        private val subscribeForAResponse: Boolean = false,
-                       private val connectionTimeout: Int = 10,
+                       private val responseTopic: String = defaultTopic,
+                       private val subscriptionTimeout: Int = 10,
+                       private val isTlsEnabled: Boolean = false,
+                       private val caInputStream: InputStream? = null,
                        private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
                        private val onResultListener: OnNfcMqttForwardingResultListener
 ) {
@@ -43,6 +49,9 @@ class NfcMqttForwarder(private val application: Application,
             serverUri = serverUri,
             defaultSubscriptionTopic = responseTopic,
             clientId = clientId,
+            subscribtionTimeout = subscriptionTimeout,
+            isTlsEnabled = isTlsEnabled,
+            caInputStream = caInputStream,
             onSubscriptionListener = onResultListener
         )
     }
@@ -81,6 +90,14 @@ class NfcMqttForwarder(private val application: Application,
         }
     }
 
+    /**
+     * Disconnect manually only when you are troubleshooting your forwarder or subscriber.
+     * All connections are managed automatically by the Forwarder, but please notice that:
+     * Forwarder assumes that message forwarded to your server gets immediate reply.
+     * If subscribeForAResponse is false, then connection will be closed automatically after successful forwarded message.
+     * However, if subscribeForAResponse is true, then automatic disconnection
+     * will be done only if MQTT server will send any message on responseTopic or subscribtionTimeout will expire.
+     */
     fun disconnectFromServer() {
         client.takeIf { it.isConnected }?.disconnect()?.actionCallback = object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
@@ -208,14 +225,26 @@ class NfcMqttForwarder(private val application: Application,
 
                 // notify observers
                 onResultListener.onConnectError(application.getString(R.string.server_connection_failure))
-                onResultListener.onForwardingError()
+                onResultListener.onForwardingError(application.getString(R.string.server_connection_failure))
             }
         }
     }
 
     private fun obtainOptions() : MqttConnectOptions {
         val options = MqttConnectOptions()
-        options.connectionTimeout = connectionTimeout
+        options.connectionTimeout = subscriptionTimeout
+
+        if (isTlsEnabled) {
+            if (caInputStream != null) {
+                caInputStream.reset()
+                val socketFactoryOptions = SocketFactory.SocketFactoryOptions()
+                val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
+                options.socketFactory = SocketFactory(sfo)
+            } else {
+                onResultListener.onConnectError(application.getString(R.string.server_null_ssl_cert_failure))
+                onResultListener.onForwardingError(application.getString(R.string.server_null_ssl_cert_failure))
+            }
+        }
 
         return options
     }
@@ -237,7 +266,8 @@ class NfcMqttForwarder(private val application: Application,
                 onResultListener.onForwardingSuccessful()
 
                 // disconnect if needed
-                disconnectFromServer()
+                // if user wishes to subscribe for a response, than disconnection will be handled by Subscriber
+                if (!subscribeForAResponse) disconnectFromServer()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
@@ -250,7 +280,7 @@ class NfcMqttForwarder(private val application: Application,
 
                 // notify observers
                 onResultListener.onPublishError(application.resources.getString(R.string.server_publish_failure))
-                onResultListener.onForwardingError()
+                onResultListener.onForwardingError(application.resources.getString(R.string.server_publish_failure))
             }
         }
     }
