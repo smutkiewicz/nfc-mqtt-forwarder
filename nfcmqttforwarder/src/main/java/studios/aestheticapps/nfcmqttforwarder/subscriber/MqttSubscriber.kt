@@ -16,9 +16,10 @@ internal class MqttSubscriber(private val application: Application,
                               private val clientId: String = MqttClient.generateClientId(),
                               private val isTlsEnabled: Boolean = false,
                               private val caInputStream: InputStream? = null,
-                              private val subscribtionTimeout: Int = 10,
-                              private val onSubscriptionListener: OnNfcMqttForwardingResultListener
+                              private val subscribtionTimeout: Int = 10
 ) : MqttCallback {
+
+    var onSubscriptionListener: OnNfcMqttForwardingResultListener? = null
 
     private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
     private val subscribedTo: HashMap<String, Boolean> = HashMap()
@@ -40,7 +41,7 @@ internal class MqttSubscriber(private val application: Application,
         unsubscribeFromAllTopicsAndDisconnect()
 
         // notify observers
-        onSubscriptionListener.onSubscriptionMessageArrived(topic, message)
+        onSubscriptionListener?.onSubscriptionMessageArrived(topic, message)
     }
 
     override fun connectionLost(cause: Throwable?) {}
@@ -52,7 +53,7 @@ internal class MqttSubscriber(private val application: Application,
     }
 
     fun unsubscribeFromTopic(topic: String) {
-        client.takeIf { it.isConnected }?.unsubscribe(topic)?.actionCallback = object : IMqttActionListener {
+        client.takeIf { it.isConnected }?.unsubscribe(topic, null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.i(TAG, "Successfully unsubscribed $topic.")
                 subscribedTo.remove(topic)
@@ -62,17 +63,17 @@ internal class MqttSubscriber(private val application: Application,
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(TAG, "Failed unsubscribing $topic.")
             }
-        }
+        })
     }
 
     fun unsubscribeFromAllTopicsAndDisconnect() {
         subscribedTo.forEach { unsubscribeFromTopic(it.key) }
-        client.takeIf { it.isConnected }?.disconnect()?.actionCallback = object : IMqttActionListener {
+        client.takeIf { it.isConnected }?.disconnect(null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.i(TAG, "Successfully disconnected from $serverUri.")
 
                 // notify observers
-                onSubscriptionListener.onDisconnectSuccessful()
+                onSubscriptionListener?.onDisconnectSuccessful()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
@@ -82,9 +83,9 @@ internal class MqttSubscriber(private val application: Application,
                     ))
 
                 // notify observers
-                onSubscriptionListener.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
+                onSubscriptionListener?.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
             }
-        }
+        })
     }
 
     private fun connectToServerAndSubscribe(topic: String) {
@@ -95,12 +96,12 @@ internal class MqttSubscriber(private val application: Application,
         }
 
         // connect to MQTT Server
-        client.connect(obtainOptions()).actionCallback = object : IMqttActionListener {
+        client.connect(obtainOptions(), null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
                 Log.i(TAG, "Successfully connected to $serverUri.")
 
                 // notify observers
-                onSubscriptionListener.onConnectSuccessful()
+                onSubscriptionListener?.onConnectSuccessful()
 
                 // try to subscribe
                 subscribeToTopic(topic)
@@ -110,10 +111,10 @@ internal class MqttSubscriber(private val application: Application,
                 Log.e(TAG, "Failed to connect to $serverUri!")
 
                 // notify observers
-                onSubscriptionListener.onConnectError(application.getString(R.string.server_connection_failure))
-                onSubscriptionListener.onSubscriptionError(application.getString(R.string.server_connection_failure))
+                onSubscriptionListener?.onConnectError(application.getString(R.string.server_connection_failure))
+                onSubscriptionListener?.onSubscriptionError(application.getString(R.string.server_connection_failure))
             }
-        }
+        })
     }
 
     private fun obtainOptions() : MqttConnectOptions {
@@ -131,8 +132,8 @@ internal class MqttSubscriber(private val application: Application,
                 val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
                 options.socketFactory = SocketFactory(sfo)
             } else {
-                onSubscriptionListener.onConnectError(application.getString(R.string.server_null_ssl_cert_failure))
-                onSubscriptionListener.onSubscriptionError(application.getString(R.string.server_null_ssl_cert_failure))
+                onSubscriptionListener?.onConnectError(application.getString(R.string.server_null_ssl_cert_failure))
+                onSubscriptionListener?.onSubscriptionError(application.getString(R.string.server_null_ssl_cert_failure))
             }
         }
 
@@ -155,14 +156,14 @@ internal class MqttSubscriber(private val application: Application,
                 Log.d(TAG, "Subscriber of = $subscribedTo")
 
                 // notify observers
-                onSubscriptionListener.onSubscriptionSuccess()
+                onSubscriptionListener?.onSubscriptionSuccess()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(TAG, "Subscription to $topic failed!")
 
                 // notify observers
-                onSubscriptionListener.onSubscriptionError("Subscription to $topic failed!")
+                onSubscriptionListener?.onSubscriptionError("Subscription to $topic failed!")
             }
         })
     }

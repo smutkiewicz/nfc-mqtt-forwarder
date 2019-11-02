@@ -27,15 +27,15 @@ class MainActivity : AppCompatActivity(),
             subscriptionTimeout = 5,
             isTlsEnabled = true,
             caInputStream = application.assets.open("ca.crt"),
-            messageType = MessageType.ONLY_PAYLOAD_ARRAY,
-            onResultListener = this
+            messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_ARRAY,
+            trimUnwantedBytesFromPayload = true
         )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
+        forwarder.onResultListener = this
         processNfcOperations(intent)
     }
 
@@ -52,7 +52,7 @@ class MainActivity : AppCompatActivity(),
     private fun processNfcOperations(intent: Intent) {
         Log.d("TAG", "New NFC intent")
         if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
-            forwarder.processNfcIntent(intent)
+            forwarder.processNfcIntent(intent, additionalMessage = "some message")
         }
     }
 
