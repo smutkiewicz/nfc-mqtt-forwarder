@@ -83,22 +83,6 @@ internal class SocketFactory @Throws(
             caKeyStore.setCertificateEntry(alias, ca)
             tmf.init(caKeyStore)
 
-            Log.v(TAG, "Certificate Owner: " + ca.subjectDN.toString())
-            Log.v(TAG, "Certificate Issuer: " + ca.issuerDN.toString())
-            Log.v(TAG, "Certificate Serial Number: " + ca.serialNumber.toString())
-            Log.v(TAG, "Certificate Algorithm: " + ca.sigAlgName)
-            Log.v(TAG, "Certificate Version: " + ca.version)
-            Log.v(TAG, "Certificate OID: " + ca.sigAlgOID)
-
-            val aliasesCA = caKeyStore.aliases()
-            while (aliasesCA.hasMoreElements()) {
-                val o = aliasesCA.nextElement()
-                Log.v(TAG, "Alias: $o" +
-                        " isKeyEntry:" + caKeyStore.isKeyEntry(o) +
-                        " isCertificateEntry: " + caKeyStore.isCertificateEntry(o)
-                )
-            }
-
         } else {
             Log.v(TAG, "CA sideload: false, using system keystore")
             val keyStore = KeyStore.getInstance("AndroidCAStore")

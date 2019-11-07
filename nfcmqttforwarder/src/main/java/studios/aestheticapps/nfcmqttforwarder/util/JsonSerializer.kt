@@ -10,6 +10,11 @@ internal class JsonSerializer {
             .create()
             .toJson(stream, object : TypeToken<List<T>>() {}.type)
 
+    fun <K, V> mapToJson(stream: Map<K, V>): String =
+        GsonBuilder()
+            .create()
+            .toJson(stream, object : TypeToken<Map<K, V>>() {}.type)
+
     fun <T> jsonToArray(stream: String): List<T> =
         GsonBuilder()
             .create()

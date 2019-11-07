@@ -70,7 +70,7 @@ class NfcMqttForwarder(private val application: Application,
      *
      * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
      */
-    fun processNfcIntent(intent: Intent, topic: String = defaultTopic, additionalMessage: String = "") {
+    fun processNfcIntent(intent: Intent, topic: String = defaultTopic, additionalMessages: Map<String, String> = mutableMapOf()) {
         Log.i(TAG, "Processing intent of type " + intent.action + ".")
 
         // subscribe for response if needed
@@ -82,7 +82,7 @@ class NfcMqttForwarder(private val application: Application,
         when {
             isActionAnNdefNfcIntent(intent.action!!) -> {
                 if (messageType == MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY) processTagFrom(intent, topic)
-                else processNdefMessageFrom(intent, topic, additionalMessage)
+                else processNdefMessageFrom(intent, topic, additionalMessages.toMutableMap())
             }
 
             isActionAnNfcIntent(intent.action!!) -> processTagFrom(intent, topic)
@@ -125,11 +125,12 @@ class NfcMqttForwarder(private val application: Application,
     /**
      * Parses all NDEF Messages from the intent and sends it to server.
      */
-    private fun processNdefMessageFrom(intent: Intent, topic: String, additionalMessage: String = "") {
+    private fun processNdefMessageFrom(intent: Intent, topic: String,
+                                       additionalMessages: MutableMap<String, String> = mutableMapOf()) {
         intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)?.also { rawMsgs ->
             rawMsgs.forEach {
                 (it as NdefMessage).apply {
-                    val message = createMessage(records, additionalMessage)
+                    val message = createMessage(records, additionalMessages)
                     connectToServerAndTryToPublishMessage(message, topic)
                 }
             }
@@ -145,9 +146,10 @@ class NfcMqttForwarder(private val application: Application,
      * and there are some tags with no ID at all (the byte array will be zero-sized),
      * so do not rely on such a method of identifying tags unless you're sure your tags have stable UID.
      */
-    private fun processTagFrom(intent: Intent, topic: String, additionalMessage: String = "") {
+    private fun processTagFrom(intent: Intent, topic: String,
+                               additionalMessages: MutableMap<String, String> = mutableMapOf()) {
         intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)?.also {
-            val message = createMessage(arrayOf(it.id.toString()), additionalMessage)
+            val message = createMessage(arrayOf(it.id.toString()), additionalMessages)
             connectToServerAndTryToPublishMessage(message, topic)
         }
     }
@@ -155,16 +157,30 @@ class NfcMqttForwarder(private val application: Application,
     /**
      * Creates message for MQTT server of type defined in MessageType."
      */
-    private fun createMessage(records: Array<NdefRecord>, additionalMessage: String = "") : String {
+    private fun createMessage(records: Array<NdefRecord>, additionalMessages: MutableMap<String, String> = mutableMapOf()) : String {
         val serializer = JsonSerializer()
+        var attributeIndex = 0
+
         val message = when (messageType) {
-            MessageType.NDEF_MESSAGE_ARRAY -> serializer.arrayToJson(records.asList())
-            MessageType.ONLY_PAYLOAD_ARRAY -> serializer.arrayToJson(records.map { convertBytesToString(it.payload) })
-            MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_ARRAY -> {
-                val list = records.map { convertBytesToString(it.payload) }.toMutableList()
-                list.add(additionalMessage)
-                serializer.arrayToJson(list)
+
+            MessageType.NDEF_MESSAGE_ARRAY -> {
+                serializer.arrayToJson(records.asList())
             }
+
+            MessageType.ONLY_PAYLOAD_ARRAY -> {
+                serializer.arrayToJson(records.map { convertBytesToString(it.payload) })
+            }
+
+            MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON -> {
+                val map = mutableMapOf<String, String>()
+                records.forEach {
+                    map["attr$attributeIndex"] = convertBytesToString(it.payload)
+                    attributeIndex++
+                }
+                map.putAll(additionalMessages)
+                serializer.mapToJson(map)
+            }
+
             else -> ""
         }
 
@@ -176,15 +192,21 @@ class NfcMqttForwarder(private val application: Application,
     /**
      * Creates message for MQTT server of type MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY, used when non-NDEF tag was detected."
      */
-    private fun createMessage(records: Array<String>, additionalMessage: String = "") : String {
+    private fun createMessage(records: Array<String>, additionalMessages: MutableMap<String, String> = mutableMapOf()) : String {
         val serializer = JsonSerializer()
-        val list = records.map { StringConverter.bytesToHexString(it.toByteArray()) }.toMutableList()
+        var attributeIndex = 0
 
-        if (messageType == MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_ARRAY) {
-            list.add(additionalMessage)
+        val map = mutableMapOf<String, String>()
+        records.forEach {
+            map["attr$attributeIndex"] = StringConverter.bytesToHexString(it.toByteArray())
+            attributeIndex++
         }
 
-        val message = serializer.arrayToJson(list)
+        if (messageType == MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON) {
+            map.putAll(additionalMessages)
+        }
+
+        val message = serializer.mapToJson(map)
 
         Log.d(TAG, "Created message of type " + MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY.name + " = \"$message\"")
 

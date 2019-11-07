@@ -14,7 +14,7 @@ class MainActivity : AppCompatActivity(),
     OnNfcMqttForwardingResultListener {
 
     // should be a result of login or sth
-    private val clientId = "courier001"
+    private val clientId = "client001"
 
     private val forwarder: NfcMqttForwarder by lazy {
         NfcMqttForwarder(
@@ -27,7 +27,7 @@ class MainActivity : AppCompatActivity(),
             subscriptionTimeout = 5,
             isTlsEnabled = true,
             caInputStream = application.assets.open("ca.crt"),
-            messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_ARRAY,
+            messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
             trimUnwantedBytesFromPayload = true
         )
     }
@@ -52,7 +52,8 @@ class MainActivity : AppCompatActivity(),
     private fun processNfcOperations(intent: Intent) {
         Log.d("TAG", "New NFC intent")
         if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
-            forwarder.processNfcIntent(intent, additionalMessage = "some message")
+            forwarder.processNfcIntent(intent, additionalMessages =
+            mapOf("attrX" to "nice msg", "attrY" to "some msg"))
         }
     }
 
