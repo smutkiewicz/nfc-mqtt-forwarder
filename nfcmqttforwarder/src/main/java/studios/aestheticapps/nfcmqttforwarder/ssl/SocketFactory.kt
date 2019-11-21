@@ -1,6 +1,5 @@
 package studios.aestheticapps.nfcmqttforwarder.ssl
 
-import android.util.Log
 import java.io.IOException
 import java.io.InputStream
 import java.net.InetAddress
@@ -23,10 +22,11 @@ internal class SocketFactory @Throws(
     UnrecoverableKeyException::class
 )
 @JvmOverloads constructor(options: SocketFactoryOptions = SocketFactoryOptions()) : SSLSocketFactory() {
-    private val factory: javax.net.ssl.SSLSocketFactory
 
+    private val factory: SSLSocketFactory
 
-    private val tmf: TrustManagerFactory
+    private val tmf: TrustManagerFactory =
+        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
 
     private val trustManagers: Array<TrustManager>
         get() = tmf.trustManagers
@@ -63,15 +63,10 @@ internal class SocketFactory @Throws(
     }
 
     init {
-        Log.v(TAG, "initializing CustomSocketFactory")
-
-        tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         val kmf = KeyManagerFactory.getInstance("X509")
 
 
         if (options.hasCaCrt()) {
-            Log.v(this.toString(), "MQTT_CONNECTION_OPTIONS.hasCaCrt(): true")
-
             val caKeyStore = KeyStore.getInstance(KeyStore.getDefaultType())
             caKeyStore.load(null, null)
 
@@ -79,40 +74,31 @@ internal class SocketFactory @Throws(
             val ca = caCF.generateCertificate(options.caCrtInputStream) as X509Certificate
             val alias = ca.subjectX500Principal.name
 
-            // Set propper alias name
             caKeyStore.setCertificateEntry(alias, ca)
             tmf.init(caKeyStore)
 
         } else {
-            Log.v(TAG, "CA sideload: false, using system keystore")
             val keyStore = KeyStore.getInstance("AndroidCAStore")
             keyStore.load(null)
             tmf.init(keyStore)
         }
 
         if (options.hasClientP12Crt()) {
-            Log.v(TAG, "MQTT_CONNECTION_OPTIONS.hasClientP12Crt(): true")
-
             val clientKeyStore = KeyStore.getInstance("PKCS12")
 
             clientKeyStore.load(
                 options.caClientP12InputStream,
-                if (options.hasClientP12Password()) options.caClientP12Password!!.toCharArray() else CharArray(0)
+                if (options.hasClientP12Password())
+                    options.caClientP12Password!!.toCharArray() else CharArray(0)
             )
+
             kmf.init(
                 clientKeyStore,
-                if (options.hasClientP12Password()) options.caClientP12Password!!.toCharArray() else CharArray(0)
+                if (options.hasClientP12Password())
+                    options.caClientP12Password!!.toCharArray() else CharArray(0)
             )
 
-            Log.v(this.toString(), "Client .p12 Keystore content: ")
-            val aliasesClientCert = clientKeyStore.aliases()
-            while (aliasesClientCert.hasMoreElements()) {
-                val o = aliasesClientCert.nextElement()
-                Log.v(TAG, "Alias: $o")
-            }
-
         } else {
-            Log.v(TAG, "Client .p12 sideload: false, using null CLIENT cert")
             kmf.init(null, null)
         }
 

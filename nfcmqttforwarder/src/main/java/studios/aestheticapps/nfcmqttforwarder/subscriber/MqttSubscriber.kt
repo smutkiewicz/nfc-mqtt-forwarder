@@ -11,7 +11,7 @@ import studios.aestheticapps.nfcmqttforwarder.ssl.SocketFactory
 import java.io.InputStream
 
 internal class MqttSubscriber(private val application: Application,
-                              private val serverUri: String,
+                              private val brokerUri: String,
                               private val defaultSubscriptionTopic: String,
                               private val clientId: String = MqttClient.generateClientId(),
                               private val isTlsEnabled: Boolean = false,
@@ -21,7 +21,7 @@ internal class MqttSubscriber(private val application: Application,
 
     var onSubscriptionListener: OnNfcMqttForwardingResultListener? = null
 
-    private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
+    private val client by lazy { MqttAndroidClient(application, brokerUri, clientId) }
     private val subscribedTo: HashMap<String, Boolean> = HashMap()
 
     init {
@@ -49,7 +49,7 @@ internal class MqttSubscriber(private val application: Application,
     override fun deliveryComplete(token: IMqttDeliveryToken?) {}
 
     fun subscribeToTopicAndReceiveResponse(subscriptionTopic: String = defaultSubscriptionTopic) {
-        connectToServerAndSubscribe(subscriptionTopic)
+        connectToBrokerAndSubscribe(subscriptionTopic)
     }
 
     fun unsubscribeFromTopic(topic: String) {
@@ -70,7 +70,7 @@ internal class MqttSubscriber(private val application: Application,
         subscribedTo.forEach { unsubscribeFromTopic(it.key) }
         client.takeIf { it.isConnected }?.disconnect(null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.i(TAG, "Successfully disconnected from $serverUri.")
+                Log.i(TAG, "Successfully disconnected from $brokerUri.")
 
                 // notify observers
                 onSubscriptionListener?.onDisconnectSuccessful()
@@ -79,26 +79,26 @@ internal class MqttSubscriber(private val application: Application,
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(
                     TAG, application.resources.getString(
-                        R.string.server_disconnection_failure
+                        R.string.broker_disconnection_failure
                     ))
 
                 // notify observers
-                onSubscriptionListener?.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
+                onSubscriptionListener?.onDisconnectError(application.resources.getString(R.string.broker_disconnection_failure))
             }
         })
     }
 
-    private fun connectToServerAndSubscribe(topic: String) {
+    private fun connectToBrokerAndSubscribe(topic: String) {
         // check if client is already connected
         client.takeIf { it.isConnected }?.let {
             subscribeToTopic(topic)
             return
         }
 
-        // connect to MQTT Server
+        // connect to MQTT Broker
         client.connect(obtainOptions(), null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.i(TAG, "Successfully connected to $serverUri.")
+                Log.i(TAG, "Successfully connected to $brokerUri.")
 
                 // notify observers
                 onSubscriptionListener?.onConnectSuccessful()
@@ -108,11 +108,11 @@ internal class MqttSubscriber(private val application: Application,
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
-                Log.e(TAG, "Failed to connect to $serverUri!")
+                Log.e(TAG, "Failed to connect to $brokerUri!")
 
                 // notify observers
-                onSubscriptionListener?.onConnectError(application.getString(R.string.server_connection_failure))
-                onSubscriptionListener?.onSubscriptionError(application.getString(R.string.server_connection_failure))
+                onSubscriptionListener?.onConnectError(application.getString(R.string.broker_connection_failure))
+                onSubscriptionListener?.onSubscriptionError(application.getString(R.string.broker_connection_failure))
             }
         })
     }
@@ -132,8 +132,8 @@ internal class MqttSubscriber(private val application: Application,
                 val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
                 options.socketFactory = SocketFactory(sfo)
             } else {
-                onSubscriptionListener?.onConnectError(application.getString(R.string.server_null_ssl_cert_failure))
-                onSubscriptionListener?.onSubscriptionError(application.getString(R.string.server_null_ssl_cert_failure))
+                onSubscriptionListener?.onConnectError(application.getString(R.string.broker_null_ssl_cert_failure))
+                onSubscriptionListener?.onSubscriptionError(application.getString(R.string.broker_null_ssl_cert_failure))
             }
         }
 
@@ -169,7 +169,7 @@ internal class MqttSubscriber(private val application: Application,
     }
 
     private fun launchTimeoutTimer(topic: String) {
-        val timer = object : CountDownTimer(subscribtionTimeout * 1000L, subscribtionTimeout * 1000L) {
+        object : CountDownTimer(subscribtionTimeout * 1000L, subscribtionTimeout * 1000L) {
 
             override fun onTick(millisUntilFinished: Long) {}
 

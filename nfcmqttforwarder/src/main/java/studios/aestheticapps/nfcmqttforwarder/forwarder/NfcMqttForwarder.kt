@@ -19,16 +19,20 @@ import java.nio.charset.Charset
 
 /**
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
- * Processes NFC intent and sends its content directly to MQTT Server.
- * @property subscribeForAResponse True if you want to listen to response from your MQTT server, set as false by default. If true, specify your responseTopic.
- * @property responseTopic Specify if you want to listen to response from your MQTT server, set as defaultTopic by default.
- * @property subscriptionTimeout Timeout for response from server, measured in seconds, default is 10s. Subscriber automatically disconnects after this period.
+ * Processes NFC intent and sends its content directly to MQTT Broker.
+ * 
+ * @property brokerUri Valid MQTT broker uri, ex. mqtt://mqtt.eclipse.org:1883.
+ * @property defaultTopic Specify default topic that forwarder can push its messages to. You can override this by calling forwarder.processNfcIntent(topic = "your-new-topic").
+ * @property subscribeForAResponse True if you want to listen to response from your MQTT broker, set as false by default. If true, specify your responseTopic.
+ * @property responseTopic Specify if you want to listen to response from your MQTT broker, set as defaultTopic by default.
+ * @property subscriptionTimeout Timeout for response from broker, measured in seconds, default is 10s. Subscriber automatically disconnects after this period.
  * @property isTlsEnabled Set as true if your connection has to be tls-secured (ca.crt file required) set as false by default. If true, specify your caInputStream.
- * @property caInputStream Specify input stream to your ssl client cert file.
+ * @property caInputStream Specify input stream to your ssl client cert file if isTlsEnabled is set to true.
+ * @property messageType See {@MessageType}. MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON set as default.
  * @property trimUnwantedBytesFromPayload Sometimes payloads come with text of kind "\u0002enSomeText", the option gets rid of them in result message string. Set default as true.
  */
 class NfcMqttForwarder(private val application: Application,
-                       private val serverUri: String,
+                       private val brokerUri: String,
                        private val clientId: String = MqttClient.generateClientId(),
                        private val defaultTopic: String,
                        private val subscribeForAResponse: Boolean = false,
@@ -36,21 +40,30 @@ class NfcMqttForwarder(private val application: Application,
                        private val subscriptionTimeout: Int = 10,
                        private val isTlsEnabled: Boolean = false,
                        private val caInputStream: InputStream? = null,
-                       private val messageType: MessageType = MessageType.ONLY_PAYLOAD_ARRAY,
+                       private val messageType: MessageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
                        private val trimUnwantedBytesFromPayload: Boolean = true) {
 
+    init {
+        check(!(isTlsEnabled && caInputStream == null)) {
+            application.getString(R.string.error_provide_inputstream)
+        }
+    }
+
+    /**
+     * Specify listener if you want to receive callback on your forwarded messages.
+     */
     var onResultListener: OnNfcMqttForwardingResultListener? = null
         set(value) {
             field = value
             subscriber.onSubscriptionListener = value
         }
 
-    private val client by lazy { MqttAndroidClient(application, serverUri, clientId) }
+    private val client by lazy { MqttAndroidClient(application, brokerUri, clientId) }
 
     private val subscriber: MqttSubscriber by lazy {
         MqttSubscriber(
-            application,
-            serverUri = serverUri,
+            application = application,
+            brokerUri = brokerUri,
             defaultSubscriptionTopic = responseTopic,
             clientId = clientId,
             subscribtionTimeout = subscriptionTimeout,
@@ -65,12 +78,16 @@ class NfcMqttForwarder(private val application: Application,
     /**
      * Pushes raw String message containing all NDEF records as Json list (for NDEF_ACTION intents type) or
      * NFC low-level tag UID/RID as single-entry Json list with tagUid (when Intent action is of type TECH_ACTION or TAG_ACTION)
-     * directly to topic on MQTT Server provided by user (specified by serverUri).
-     * Automatically connects user to server.
+     * directly to topic on MQTT Server provided by user (specified by brokerUri).
+     * Automatically connects user to broker.
      *
      * @param intent Intent forwarded to the library from any Activity supporting NFC Intents.
+     * @param topic Specify topic that should be used to forward message. If not specified, defaultTopic is used.
+     * @param additionalMessages Will be added to message JSON if messageType is MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON. Map empty by default.
      */
-    fun processNfcIntent(intent: Intent, topic: String = defaultTopic, additionalMessages: Map<String, String> = mutableMapOf()) {
+    fun processNfcIntent(intent: Intent, topic: String = defaultTopic,
+                         additionalMessages: Map<String, String> = mutableMapOf()) {
+
         Log.i(TAG, "Processing intent of type " + intent.action + ".")
 
         // subscribe for response if needed
@@ -80,6 +97,7 @@ class NfcMqttForwarder(private val application: Application,
         wantsToForwardMsg = true
 
         when {
+
             isActionAnNdefNfcIntent(intent.action!!) -> {
                 if (messageType == MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY) processTagFrom(intent, topic)
                 else processNdefMessageFrom(intent, topic, additionalMessages.toMutableMap())
@@ -96,15 +114,15 @@ class NfcMqttForwarder(private val application: Application,
     /**
      * Disconnect manually only when you are troubleshooting your forwarder or subscriber.
      * All connections are managed automatically by the Forwarder, but please notice that:
-     * Forwarder assumes that message forwarded to your server gets immediate reply.
+     * Forwarder assumes that message forwarded to your broker gets immediate reply.
      * If subscribeForAResponse is false, then connection will be closed automatically after successful forwarded message.
      * However, if subscribeForAResponse is true, then automatic disconnection
-     * will be done only if MQTT server will send any message on responseTopic or subscribtionTimeout will expire.
+     * will be done only if MQTT broker will send any message on responseTopic or subscribtionTimeout will expire.
      */
-    fun disconnectFromServer() {
+    fun disconnectFromBroker() {
         client.takeIf { it.isConnected }?.disconnect(null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.i(TAG, "Successfully disconnected from $serverUri.")
+                Log.i(TAG, "Successfully disconnected from $brokerUri.")
 
                 // notify observers
                 onResultListener?.onDisconnectSuccessful()
@@ -113,17 +131,17 @@ class NfcMqttForwarder(private val application: Application,
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(
                     TAG, application.resources.getString(
-                        R.string.server_disconnection_failure
+                        R.string.broker_disconnection_failure
                     ))
 
                 // notify observers
-                onResultListener?.onDisconnectError(application.resources.getString(R.string.server_disconnection_failure))
+                onResultListener?.onDisconnectError(application.resources.getString(R.string.broker_disconnection_failure))
             }
         })
     }
 
     /**
-     * Parses all NDEF Messages from the intent and sends it to server.
+     * Parses all NDEF Messages from the intent and sends it to broker.
      */
     private fun processNdefMessageFrom(intent: Intent, topic: String,
                                        additionalMessages: MutableMap<String, String> = mutableMapOf()) {
@@ -138,7 +156,7 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     /**
-     * Parses non-NDEF tag message as tag stable unique identifier (UID) from the intent and sends it to server
+     * Parses non-NDEF tag message as tag stable unique identifier (UID) from the intent and sends it to broker
      * as no parsable NDEF messages were detected.
      *
      * The tag identifier is a low level serial number, used for anti-collision and identification.
@@ -155,9 +173,10 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     /**
-     * Creates message for MQTT server of type defined in MessageType."
+     * Creates message for MQTT broker of type defined in MessageType.
      */
-    private fun createMessage(records: Array<NdefRecord>, additionalMessages: MutableMap<String, String> = mutableMapOf()) : String {
+    private fun createMessage(records: Array<NdefRecord>,
+                              additionalMessages: MutableMap<String, String> = mutableMapOf()) : String {
         val serializer = JsonSerializer()
         var attributeIndex = 0
 
@@ -190,7 +209,7 @@ class NfcMqttForwarder(private val application: Application,
     }
 
     /**
-     * Creates message for MQTT server of type MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY, used when non-NDEF tag was detected."
+     * Creates message for MQTT broker of type MessageType.ONLY_UID_RID_ONE_ENTRY_ARRAY, used when non-NDEF tag was detected."
      */
     private fun createMessage(records: Array<String>, additionalMessages: MutableMap<String, String> = mutableMapOf()) : String {
         val serializer = JsonSerializer()
@@ -244,7 +263,7 @@ class NfcMqttForwarder(private val application: Application,
         // connect to MQTT Server
         client.connect(obtainOptions(), null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.i(TAG, "Successfully connected to $serverUri.")
+                Log.i(TAG, "Successfully connected to $brokerUri.")
 
                 // notify observers
                 onResultListener?.onConnectSuccessful()
@@ -256,14 +275,14 @@ class NfcMqttForwarder(private val application: Application,
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(
                     TAG, application.getString(
-                        R.string.server_connection_failure
+                        R.string.broker_connection_failure
                     ))
 
                 wantsToForwardMsg = false
 
                 // notify observers
-                onResultListener?.onConnectError(application.getString(R.string.server_connection_failure))
-                onResultListener?.onForwardingError(application.getString(R.string.server_connection_failure))
+                onResultListener?.onConnectError(application.getString(R.string.broker_connection_failure))
+                onResultListener?.onForwardingError(application.getString(R.string.broker_connection_failure))
             }
         })
     }
@@ -279,8 +298,8 @@ class NfcMqttForwarder(private val application: Application,
                 val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
                 options.socketFactory = SocketFactory(sfo)
             } else {
-                onResultListener?.onConnectError(application.getString(R.string.server_null_ssl_cert_failure))
-                onResultListener?.onForwardingError(application.getString(R.string.server_null_ssl_cert_failure))
+                onResultListener?.onConnectError(application.getString(R.string.broker_null_ssl_cert_failure))
+                onResultListener?.onForwardingError(application.getString(R.string.broker_null_ssl_cert_failure))
             }
         }
 
@@ -295,7 +314,7 @@ class NfcMqttForwarder(private val application: Application,
         val message = MqttMessage(payload.toByteArray())
         client.publish(topic, message, null, object : IMqttActionListener {
             override fun onSuccess(asyncActionToken: IMqttToken) {
-                Log.w(TAG, "Successfully published to $serverUri.")
+                Log.w(TAG, "Successfully published to $brokerUri.")
 
                 // notify observers
                 onResultListener?.onPublishSuccessful()
@@ -305,20 +324,20 @@ class NfcMqttForwarder(private val application: Application,
 
                 // disconnect if needed
                 // if user wishes to subscribe for a response, than disconnection will be handled by Subscriber
-                if (!subscribeForAResponse) disconnectFromServer()
+                if (!subscribeForAResponse) disconnectFromBroker()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
                 Log.e(
                     TAG, application.resources.getString(
-                        R.string.server_publish_failure
+                        R.string.broker_publish_failure
                     ))
 
                 wantsToForwardMsg = false
 
                 // notify observers
-                onResultListener?.onPublishError(application.resources.getString(R.string.server_publish_failure))
-                onResultListener?.onForwardingError(application.resources.getString(R.string.server_publish_failure))
+                onResultListener?.onPublishError(application.resources.getString(R.string.broker_publish_failure))
+                onResultListener?.onForwardingError(application.resources.getString(R.string.broker_publish_failure))
             }
         })
     }

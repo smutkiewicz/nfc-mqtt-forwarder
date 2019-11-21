@@ -18,7 +18,92 @@ Simple NFC tag message MQTT forwarder based on Paho Android Service. Processes N
 - App level Gradle:
 ```   
    dependencies {
-         implementation "com.github.smutkiewicz:nfc-mqtt-forwarder:v0.91"
+         implementation "com.github.smutkiewicz:nfc-mqtt-forwarder:v0.93"
    }
 ```   
+
+3. Configure your Activity.
+
+- Example in practice:
+```
+// You can implement Listener in your Activity
+class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
+
+    // Initialize Forwarder class
+    private val forwarder: NfcMqttForwarder by lazy {
+        NfcMqttForwarder(
+            application,
+            brokerUri = getString(R.string.brokerUri),
+            defaultTopic = getString(R.string.defaultTopic),
+            subscribeForAResponse = true,
+            responseTopic = getString(R.string.defaultSubscriptionTopic),
+            subscriptionTimeout = 5,
+            isTlsEnabled = true,
+            caInputStream = application.assets.open("ca.crt"),
+            messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
+            trimUnwantedBytesFromPayload = true
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        // Specify forwarding result listener
+        forwarder.onResultListener = this
+
+        // Process in case this intent is NFC intent.
+        processNfcOperations(intent)
+    }
+
+    override fun onStop() {
+        super.onStop()
+
+        // Optional, Forwarder automatically disconnects after processing.
+        // See function doc for more.
+        forwarder.disconnectFromBroker()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+
+        // Process in case this intent is NFC intent.
+        processNfcOperations(intent)
+    }
+
+    private fun processNfcOperations(intent: Intent) {
+        Log.d("TAG", "New NFC intent")
+
+        // Check if library supports intent action
+        if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
+            // Process intent
+            forwarder.processNfcIntent(
+                intent = intent,
+                additionalMessages = mapOf(
+                    "attrX" to "nice msg",
+                    "attrY" to "some msg"
+                )
+            )
+        }
+    }
+
+    override fun onForwardingError(message: String) {
+        Log.d(TAG, "Reacting for error in forwarding!")
+    }
+
+    override fun onForwardingSuccessful() {
+        Log.d(TAG, "Reacting for successfully forwarded msg!")
+    }
+
+    override fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {
+        Log.d(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
+        Toast.makeText(this,
+            "Message arrived on topic = $topic with msg = \"$message\".", Toast.LENGTH_SHORT).show()
+    }
+
+    companion object {
+        val TAG = "MainActivity"
+    }
+}
+```
 3. Happy coding! :)

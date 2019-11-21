@@ -10,20 +10,17 @@ import studios.aestheticapps.nfcmqttforwarder.forwarder.MessageType
 import studios.aestheticapps.nfcmqttforwarder.forwarder.NfcMqttForwarder
 import studios.aestheticapps.nfcmqttforwarder.forwarder.OnNfcMqttForwardingResultListener
 
-class MainActivity : AppCompatActivity(),
-    OnNfcMqttForwardingResultListener {
+// You can implement Listener in your Activity
+class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
 
-    // should be a result of login or sth
-    private val clientId = "client001"
-
+    // Initialize Forwarder class
     private val forwarder: NfcMqttForwarder by lazy {
         NfcMqttForwarder(
             application,
-            serverUri = getString(R.string.serverUri),
-            clientId = clientId,
-            defaultTopic = getString(R.string.defaultTopic, clientId),
+            brokerUri = getString(R.string.brokerUri),
+            defaultTopic = getString(R.string.defaultTopic),
             subscribeForAResponse = true,
-            responseTopic = getString(R.string.defaultSubscriptionTopic, clientId),
+            responseTopic = getString(R.string.defaultSubscriptionTopic),
             subscriptionTimeout = 5,
             isTlsEnabled = true,
             caInputStream = application.assets.open("ca.crt"),
@@ -35,25 +32,42 @@ class MainActivity : AppCompatActivity(),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Specify forwarding result listener
         forwarder.onResultListener = this
+
+        // Process in case this intent is NFC intent.
         processNfcOperations(intent)
     }
 
     override fun onStop() {
         super.onStop()
-        forwarder.disconnectFromServer()
+
+        // Optional, Forwarder automatically disconnects after processing.
+        // See function doc for more.
+        forwarder.disconnectFromBroker()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
+        // Process in case this intent is NFC intent.
         processNfcOperations(intent)
     }
 
     private fun processNfcOperations(intent: Intent) {
         Log.d("TAG", "New NFC intent")
+
+        // Check if library supports intent action
         if (NfcMqttForwarder.isIntentsNfcActionSupported(intent)) {
-            forwarder.processNfcIntent(intent, additionalMessages =
-            mapOf("attrX" to "nice msg", "attrY" to "some msg"))
+            // Process intent
+            forwarder.processNfcIntent(
+                intent = intent,
+                additionalMessages = mapOf(
+                    "attrX" to "nice msg",
+                    "attrY" to "some msg"
+                )
+            )
         }
     }
 

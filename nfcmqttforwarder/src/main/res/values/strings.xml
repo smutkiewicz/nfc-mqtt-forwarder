@@ -1,16 +1,17 @@
 <resources>
     <string name="app_name">NfcMqttForwarder</string>
-    <string name="server_null_ssl_cert_failure">Null cert file! Provide client certificate file for caInputStream.
+    <string name="broker_null_ssl_cert_failure">Null cert file! Provide client certificate file for caInputStream.
         Launching default insecure connection instead…</string>
-    <string name="server_connection_failure">Failed to connect to MQTT Server. Something went wrong e.g. connection
+    <string name="broker_connection_failure">Failed to connect to MQTT Broker. Something went wrong e.g. connection
         timeout or firewall problems.
     </string>
-    <string name="server_disconnection_failure">Failed to disconnect MQTT Server. Something went wrong e.g. connection
+    <string name="broker_disconnection_failure">Failed to disconnect MQTT Broker. Something went wrong e.g. connection
         timeout or firewall problems.
     </string>
-    <string name="server_publish_failure">Failed to publish to MQTT Server. Something went wrong e.g. unrecognized topic
+    <string name="broker_publish_failure">Failed to publish to MQTT Broker. Something went wrong e.g. unrecognized topic
         or internet connection problems.
     </string>
     <string name="non_nfc_intent_detected">Non - NFC Intent detected.</string>
+    <string name="error_provide_inputstream">You have to provide crt file InputStream to use TLS.</string>
 </resources>
 
