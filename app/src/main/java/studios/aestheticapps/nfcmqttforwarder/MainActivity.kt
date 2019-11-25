@@ -9,6 +9,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage
 import studios.aestheticapps.nfcmqttforwarder.forwarder.MessageType
 import studios.aestheticapps.nfcmqttforwarder.forwarder.NfcMqttForwarder
 import studios.aestheticapps.nfcmqttforwarder.forwarder.OnNfcMqttForwardingResultListener
+import studios.aestheticapps.nfcmqttforwarder.ssl.TLSCertificateType
 
 // You can implement Listener in your Activity
 class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
@@ -19,10 +20,8 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
             application,
             brokerUri = getString(R.string.brokerUri),
             defaultTopic = getString(R.string.defaultTopic),
-            subscribeForAResponse = true,
-            responseTopic = getString(R.string.defaultSubscriptionTopic),
-            subscriptionTimeout = 5,
             isTlsEnabled = true,
+            tlsCertificateType = TLSCertificateType.SELF_SIGNED_CERTIFICATE,
             caInputStream = application.assets.open("ca.crt"),
             messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
             trimUnwantedBytesFromPayload = true
@@ -77,12 +76,6 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
 
     override fun onForwardingSuccessful() {
         Log.d(TAG, "Reacting for successfully forwarded msg!")
-    }
-
-    override fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {
-        Log.d(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
-        Toast.makeText(this,
-            "Message arrived on topic = $topic with msg = \"$message\".", Toast.LENGTH_SHORT).show()
     }
 
     companion object {

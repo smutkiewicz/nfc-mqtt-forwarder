@@ -12,6 +12,6 @@
         or internet connection problems.
     </string>
     <string name="non_nfc_intent_detected">Non - NFC Intent detected.</string>
-    <string name="error_provide_inputstream">You have to provide crt file InputStream to use TLS.</string>
+    <string name="error_provide_inputstream">You have to provide crt file InputStream to use self signed certificate TLS.</string>
 </resources>
 

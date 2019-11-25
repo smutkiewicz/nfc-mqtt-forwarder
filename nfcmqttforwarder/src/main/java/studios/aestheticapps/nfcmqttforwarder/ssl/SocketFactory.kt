@@ -105,55 +105,47 @@ internal class SocketFactory @Throws(
         // Create an SSLContext that uses our TrustManager
         val context = SSLContext.getInstance("TLSv1")
         context.init(kmf.keyManagers, trustManagers, null)
-        this.factory = context.socketFactory
-
+        factory = context.socketFactory
     }
 
-    override fun getDefaultCipherSuites() = this.factory.defaultCipherSuites
+    override fun getDefaultCipherSuites() = factory.defaultCipherSuites
 
-    override fun getSupportedCipherSuites() = this.factory.supportedCipherSuites
+    override fun getSupportedCipherSuites() = factory.supportedCipherSuites
 
     @Throws(IOException::class)
-    override fun createSocket(): Socket {
-        val r = this.factory.createSocket() as SSLSocket
-        r.enabledProtocols = enabledProtocols
-        return r
+    override fun createSocket(): Socket = (factory.createSocket() as SSLSocket).also {
+        it.enabledProtocols = enabledProtocols
     }
 
     @Throws(IOException::class)
-    override fun createSocket(s: Socket, host: String, port: Int, autoClose: Boolean): Socket {
-        val r = this.factory.createSocket(s, host, port, autoClose) as SSLSocket
-        r.enabledProtocols = enabledProtocols
-        return r
-    }
+    override fun createSocket(s: Socket, host: String, port: Int, autoClose: Boolean): Socket =
+        (factory.createSocket(s, host, port, autoClose) as SSLSocket).also {
+            it.enabledProtocols = enabledProtocols
+        }
 
     @Throws(IOException::class)
-    override fun createSocket(host: String, port: Int): Socket {
-        val r = this.factory.createSocket(host, port) as SSLSocket
-        r.enabledProtocols = enabledProtocols
-        return r
-    }
+    override fun createSocket(host: String, port: Int): Socket =
+        (factory.createSocket(host, port) as SSLSocket).also {
+            it.enabledProtocols = enabledProtocols
+        }
 
     @Throws(IOException::class)
-    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
-        val r = this.factory.createSocket(host, port, localHost, localPort) as SSLSocket
-        r.enabledProtocols = enabledProtocols
-        return r
-    }
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
+        (factory.createSocket(host, port, localHost, localPort) as SSLSocket).also {
+            it.enabledProtocols = enabledProtocols
+        }
 
     @Throws(IOException::class)
-    override fun createSocket(host: InetAddress, port: Int): Socket {
-        val r = this.factory.createSocket(host, port) as SSLSocket
-        r.enabledProtocols = enabledProtocols
-        return r
-    }
+    override fun createSocket(host: InetAddress, port: Int): Socket =
+        (factory.createSocket(host, port) as SSLSocket).also {
+            it.enabledProtocols = enabledProtocols
+        }
 
     @Throws(IOException::class)
-    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket {
-        val r = this.factory.createSocket(address, port, localAddress, localPort) as SSLSocket
-        r.enabledProtocols = enabledProtocols
-        return r
-    }
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
+        (factory.createSocket(address, port, localAddress, localPort) as SSLSocket).also {
+            it.enabledProtocols = enabledProtocols
+        }
 
     private companion object {
         private const val TAG = "SocketFactory"

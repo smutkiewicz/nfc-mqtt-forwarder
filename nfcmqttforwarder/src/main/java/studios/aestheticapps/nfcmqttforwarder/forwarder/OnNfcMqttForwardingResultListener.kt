@@ -1,7 +1,5 @@
 package studios.aestheticapps.nfcmqttforwarder.forwarder
 
-import org.eclipse.paho.client.mqttv3.MqttMessage
-
 /**
  * Interface helping developer react on forwarding results.
  */
@@ -17,20 +15,6 @@ interface OnNfcMqttForwardingResultListener {
      */
     fun onForwardingError(message: String)
 
-    /**
-     * Called when response subscription is enabled
-     */
-    fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {}
-
-    /**
-     * Called when response subscription is enabled
-     */
-    fun onSubscriptionSuccess() {}
-
-    /**
-     * Called when response subscription is enabled
-     */
-    fun onSubscriptionError(message: String) {}
 
     fun onConnectSuccessful() {}
 

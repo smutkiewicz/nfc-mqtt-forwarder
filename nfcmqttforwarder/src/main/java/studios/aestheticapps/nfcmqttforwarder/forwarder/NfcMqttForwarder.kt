@@ -11,7 +11,7 @@ import org.eclipse.paho.android.service.MqttAndroidClient
 import org.eclipse.paho.client.mqttv3.*
 import studios.aestheticapps.nfcmqttforwarder.R
 import studios.aestheticapps.nfcmqttforwarder.ssl.SocketFactory
-import studios.aestheticapps.nfcmqttforwarder.subscriber.MqttSubscriber
+import studios.aestheticapps.nfcmqttforwarder.ssl.TLSCertificateType
 import studios.aestheticapps.nfcmqttforwarder.util.JsonSerializer
 import studios.aestheticapps.nfcmqttforwarder.util.StringConverter
 import java.io.InputStream
@@ -21,11 +21,8 @@ import java.nio.charset.Charset
  * Simple NFC tag message MQTT forwarder based on Paho Android Service.
  * Processes NFC intent and sends its content directly to MQTT Broker.
  * 
- * @property brokerUri Valid MQTT broker uri, ex. mqtt://mqtt.eclipse.org:1883.
+ * @property brokerUri Valid MQTT broker uri, ex. ssl://mqtt.eclipse.org:1883.
  * @property defaultTopic Specify default topic that forwarder can push its messages to. You can override this by calling forwarder.processNfcIntent(topic = "your-new-topic").
- * @property subscribeForAResponse True if you want to listen to response from your MQTT broker, set as false by default. If true, specify your responseTopic.
- * @property responseTopic Specify if you want to listen to response from your MQTT broker, set as defaultTopic by default.
- * @property subscriptionTimeout Timeout for response from broker, measured in seconds, default is 10s. Subscriber automatically disconnects after this period.
  * @property isTlsEnabled Set as true if your connection has to be tls-secured (ca.crt file required) set as false by default. If true, specify your caInputStream.
  * @property caInputStream Specify input stream to your ssl client cert file if isTlsEnabled is set to true.
  * @property messageType See {@MessageType}. MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON set as default.
@@ -34,17 +31,20 @@ import java.nio.charset.Charset
 class NfcMqttForwarder(private val application: Application,
                        private val brokerUri: String,
                        private val clientId: String = MqttClient.generateClientId(),
+                       private val clientUsername: String = "",
+                       private val clientPassword: String = "",
                        private val defaultTopic: String,
-                       private val subscribeForAResponse: Boolean = false,
-                       private val responseTopic: String = defaultTopic,
-                       private val subscriptionTimeout: Int = 10,
                        private val isTlsEnabled: Boolean = false,
+                       private val tlsCertificateType: TLSCertificateType = TLSCertificateType.CA_SIGNED_SERVER_CERTIFICATE,
                        private val caInputStream: InputStream? = null,
                        private val messageType: MessageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
+                       private val timeout: Int = 2,
                        private val trimUnwantedBytesFromPayload: Boolean = true) {
 
     init {
-        check(!(isTlsEnabled && caInputStream == null)) {
+        check(!(isTlsEnabled
+                && tlsCertificateType == TLSCertificateType.SELF_SIGNED_CERTIFICATE
+                && caInputStream == null)) {
             application.getString(R.string.error_provide_inputstream)
         }
     }
@@ -53,24 +53,8 @@ class NfcMqttForwarder(private val application: Application,
      * Specify listener if you want to receive callback on your forwarded messages.
      */
     var onResultListener: OnNfcMqttForwardingResultListener? = null
-        set(value) {
-            field = value
-            subscriber.onSubscriptionListener = value
-        }
 
     private val client by lazy { MqttAndroidClient(application, brokerUri, clientId) }
-
-    private val subscriber: MqttSubscriber by lazy {
-        MqttSubscriber(
-            application = application,
-            brokerUri = brokerUri,
-            defaultSubscriptionTopic = responseTopic,
-            clientId = clientId,
-            subscribtionTimeout = subscriptionTimeout,
-            isTlsEnabled = isTlsEnabled,
-            caInputStream = caInputStream
-        )
-    }
 
     // Needed to block any multiple connection callbacks.
     private var wantsToForwardMsg = false
@@ -89,9 +73,6 @@ class NfcMqttForwarder(private val application: Application,
                          additionalMessages: Map<String, String> = mutableMapOf()) {
 
         Log.i(TAG, "Processing intent of type " + intent.action + ".")
-
-        // subscribe for response if needed
-        subscriber.takeIf { subscribeForAResponse }?.subscribeToTopicAndReceiveResponse()
 
         // needed to block any multiple connection callbacks
         wantsToForwardMsg = true
@@ -289,17 +270,30 @@ class NfcMqttForwarder(private val application: Application,
 
     private fun obtainOptions() : MqttConnectOptions {
         val options = MqttConnectOptions()
-        options.connectionTimeout = subscriptionTimeout
+        options.connectionTimeout = timeout
+
+        if (clientUsername.isNotEmpty()) options.userName = clientUsername
+        if (clientPassword.isNotEmpty()) options.password = clientPassword.toCharArray()
 
         if (isTlsEnabled) {
-            if (caInputStream != null) {
-                caInputStream.reset()
-                val socketFactoryOptions = SocketFactory.SocketFactoryOptions()
-                val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
-                options.socketFactory = SocketFactory(sfo)
-            } else {
-                onResultListener?.onConnectError(application.getString(R.string.broker_null_ssl_cert_failure))
-                onResultListener?.onForwardingError(application.getString(R.string.broker_null_ssl_cert_failure))
+            when (tlsCertificateType) {
+                TLSCertificateType.SELF_SIGNED_CERTIFICATE -> {
+                    if (caInputStream != null) {
+                        caInputStream.reset()
+                        val socketFactoryOptions = SocketFactory.SocketFactoryOptions()
+                        val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
+                        options.socketFactory = SocketFactory(sfo)
+                    } else {
+                        onResultListener?.onConnectError(application.getString(R.string.broker_null_ssl_cert_failure))
+                        onResultListener?.onForwardingError(application.getString(R.string.broker_null_ssl_cert_failure))
+                    }
+                }
+
+                TLSCertificateType.CA_SIGNED_SERVER_CERTIFICATE -> {
+                    val socketFactoryOptions = SocketFactory.SocketFactoryOptions()
+                    val sfo = socketFactoryOptions.withClientP12Password(clientPassword)
+                    options.socketFactory = SocketFactory(sfo)
+                }
             }
         }
 
@@ -324,7 +318,7 @@ class NfcMqttForwarder(private val application: Application,
 
                 // disconnect if needed
                 // if user wishes to subscribe for a response, than disconnection will be handled by Subscriber
-                if (!subscribeForAResponse) disconnectFromBroker()
+                disconnectFromBroker()
             }
 
             override fun onFailure(asyncActionToken: IMqttToken, exception: Throwable) {
