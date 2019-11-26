@@ -33,6 +33,8 @@ internal class SocketFactory @Throws(
 
     class SocketFactoryOptions {
 
+        var tlsVersion: TLSVersion = TLSVersion.TLSv1
+            private set
         var caCrtInputStream: InputStream? = null
             private set
         var caClientP12InputStream: InputStream? = null
@@ -40,17 +42,20 @@ internal class SocketFactory @Throws(
         var caClientP12Password: String? = null
             private set
 
-        fun withCaInputStream(stream: InputStream): SocketFactoryOptions {
+        fun withCaInputStream(tlsVersion: TLSVersion, stream: InputStream): SocketFactoryOptions {
+            this.tlsVersion = tlsVersion
             this.caCrtInputStream = stream
             return this
         }
 
-        fun withClientP12InputStream(stream: InputStream): SocketFactoryOptions {
+        fun withClientP12InputStream(tlsVersion: TLSVersion, stream: InputStream): SocketFactoryOptions {
+            this.tlsVersion = tlsVersion
             this.caClientP12InputStream = stream
             return this
         }
 
-        fun withClientP12Password(password: String): SocketFactoryOptions {
+        fun withClientP12Password(tlsVersion: TLSVersion, password: String): SocketFactoryOptions {
+            this.tlsVersion = tlsVersion
             this.caClientP12Password = password
             return this
         }
@@ -103,7 +108,7 @@ internal class SocketFactory @Throws(
         }
 
         // Create an SSLContext that uses our TrustManager
-        val context = SSLContext.getInstance("TLSv1")
+        val context = SSLContext.getInstance(options.tlsVersion.value)
         context.init(kmf.keyManagers, trustManagers, null)
         factory = context.socketFactory
     }

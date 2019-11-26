@@ -12,6 +12,7 @@ import org.eclipse.paho.client.mqttv3.*
 import studios.aestheticapps.nfcmqttforwarder.R
 import studios.aestheticapps.nfcmqttforwarder.ssl.SocketFactory
 import studios.aestheticapps.nfcmqttforwarder.ssl.TLSCertificateType
+import studios.aestheticapps.nfcmqttforwarder.ssl.TLSVersion
 import studios.aestheticapps.nfcmqttforwarder.util.JsonSerializer
 import studios.aestheticapps.nfcmqttforwarder.util.StringConverter
 import java.io.InputStream
@@ -22,11 +23,27 @@ import java.nio.charset.Charset
  * Processes NFC intent and sends its content directly to MQTT Broker.
  * 
  * @property brokerUri Valid MQTT broker uri, ex. ssl://mqtt.eclipse.org:1883.
- * @property defaultTopic Specify default topic that forwarder can push its messages to. You can override this by calling forwarder.processNfcIntent(topic = "your-new-topic").
- * @property isTlsEnabled Set as true if your connection has to be tls-secured (ca.crt file required) set as false by default. If true, specify your caInputStream.
+ *
+ * @property defaultTopic Specify default topic that forwarder can push its messages to.
+ * You can override this at runtime by calling forwarder.processNfcIntent(topic = "your-new-topic").
+ *
+ * @property isTlsEnabled Set as true if your connection has to be tls-secured (ca.crt file or/and
+ * login/password required, depending on cert type) set as false by default. If true, specify your
+ * caInputStream or/and credentials (see @property tlsVersion and @property tlsCertificateType).
+ *
+ * @property tlsVersion Choose one of TLS protocol versions: TLSv1, TLSv1.1, TLSv1.2. Set to v1 by default.
+ *
+ * @property tlsCertificateType Decide which type of TLS - secured connection you want to have.
+ * See {@TLSCertificateType} class for more details.
+ *
  * @property caInputStream Specify input stream to your ssl client cert file if isTlsEnabled is set to true.
- * @property messageType See {@MessageType}. MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON set as default.
- * @property trimUnwantedBytesFromPayload Sometimes payloads come with text of kind "\u0002enSomeText", the option gets rid of them in result message string. Set default as true.
+ *
+ * @property messageType See {@MessageType}. MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON set by default.
+ *
+ * @property timeout Connection timeout in seconds, set to 2 seconds by default.
+ *
+ * @property trimUnwantedBytesFromPayload Sometimes payloads come with text of kind "\u0002enSomeText",
+ * the option gets rid of them in result message string. Set default as true.
  */
 class NfcMqttForwarder(private val application: Application,
                        private val brokerUri: String,
@@ -34,12 +51,13 @@ class NfcMqttForwarder(private val application: Application,
                        private val clientUsername: String = "",
                        private val clientPassword: String = "",
                        private val defaultTopic: String,
-                       private val isTlsEnabled: Boolean = false,
-                       private val tlsCertificateType: TLSCertificateType = TLSCertificateType.CA_SIGNED_SERVER_CERTIFICATE,
-                       private val caInputStream: InputStream? = null,
                        private val messageType: MessageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
                        private val timeout: Int = 2,
-                       private val trimUnwantedBytesFromPayload: Boolean = true) {
+                       private val trimUnwantedBytesFromPayload: Boolean = true,
+                       private val isTlsEnabled: Boolean = false,
+                       private val tlsVersion: TLSVersion = TLSVersion.TLSv1,
+                       private val tlsCertificateType: TLSCertificateType = TLSCertificateType.CA_SIGNED_SERVER_CERTIFICATE,
+                       private val caInputStream: InputStream? = null) {
 
     init {
         check(!(isTlsEnabled
@@ -281,7 +299,7 @@ class NfcMqttForwarder(private val application: Application,
                     if (caInputStream != null) {
                         caInputStream.reset()
                         val socketFactoryOptions = SocketFactory.SocketFactoryOptions()
-                        val sfo = socketFactoryOptions.withCaInputStream(caInputStream)
+                        val sfo = socketFactoryOptions.withCaInputStream(tlsVersion, caInputStream)
                         options.socketFactory = SocketFactory(sfo)
                     } else {
                         onResultListener?.onConnectError(application.getString(R.string.broker_null_ssl_cert_failure))
@@ -291,7 +309,7 @@ class NfcMqttForwarder(private val application: Application,
 
                 TLSCertificateType.CA_SIGNED_SERVER_CERTIFICATE -> {
                     val socketFactoryOptions = SocketFactory.SocketFactoryOptions()
-                    val sfo = socketFactoryOptions.withClientP12Password(clientPassword)
+                    val sfo = socketFactoryOptions.withClientP12Password(tlsVersion, clientPassword)
                     options.socketFactory = SocketFactory(sfo)
                 }
             }

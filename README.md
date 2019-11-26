@@ -35,10 +35,9 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
             application,
             brokerUri = getString(R.string.brokerUri),
             defaultTopic = getString(R.string.defaultTopic),
-            subscribeForAResponse = true,
-            responseTopic = getString(R.string.defaultSubscriptionTopic),
-            subscriptionTimeout = 5,
             isTlsEnabled = true,
+            tlsVersion = TLSVersion.TLSv1_2,
+            tlsCertificateType = TLSCertificateType.SELF_SIGNED_CERTIFICATE,
             caInputStream = application.assets.open("ca.crt"),
             messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
             trimUnwantedBytesFromPayload = true
@@ -93,12 +92,6 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
 
     override fun onForwardingSuccessful() {
         Log.d(TAG, "Reacting for successfully forwarded msg!")
-    }
-
-    override fun onSubscriptionMessageArrived(topic: String?, message: MqttMessage?) {
-        Log.d(TAG, "Message arrived on topic = $topic with msg = \"$message\".")
-        Toast.makeText(this,
-            "Message arrived on topic = $topic with msg = \"$message\".", Toast.LENGTH_SHORT).show()
     }
 
     companion object {

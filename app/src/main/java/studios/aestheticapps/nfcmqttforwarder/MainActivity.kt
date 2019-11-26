@@ -10,6 +10,7 @@ import studios.aestheticapps.nfcmqttforwarder.forwarder.MessageType
 import studios.aestheticapps.nfcmqttforwarder.forwarder.NfcMqttForwarder
 import studios.aestheticapps.nfcmqttforwarder.forwarder.OnNfcMqttForwardingResultListener
 import studios.aestheticapps.nfcmqttforwarder.ssl.TLSCertificateType
+import studios.aestheticapps.nfcmqttforwarder.ssl.TLSVersion
 
 // You can implement Listener in your Activity
 class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
@@ -21,6 +22,7 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
             brokerUri = getString(R.string.brokerUri),
             defaultTopic = getString(R.string.defaultTopic),
             isTlsEnabled = true,
+            tlsVersion = TLSVersion.TLSv1_2,
             tlsCertificateType = TLSCertificateType.SELF_SIGNED_CERTIFICATE,
             caInputStream = application.assets.open("ca.crt"),
             messageType = MessageType.PAYLOAD_AND_ADDITIONAL_MESSAGE_JSON,
