@@ -20,7 +20,7 @@ interface OnNfcMqttForwardingResultListener {
 
     fun onConnectError(message: String) {}
 
-    fun onPublishSuccessful() {}
+    fun onPublishSuccessful(message: String) {}
 
     fun onPublishError(message: String) {}
 

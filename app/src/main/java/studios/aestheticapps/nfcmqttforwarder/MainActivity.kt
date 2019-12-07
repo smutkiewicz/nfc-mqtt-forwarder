@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.gson.Gson
 import org.eclipse.paho.client.mqttv3.MqttMessage
 import studios.aestheticapps.nfcmqttforwarder.forwarder.MessageType
 import studios.aestheticapps.nfcmqttforwarder.forwarder.NfcMqttForwarder
@@ -74,6 +75,12 @@ class MainActivity : AppCompatActivity(), OnNfcMqttForwardingResultListener {
 
     override fun onForwardingError(message: String) {
         Log.d(TAG, "Reacting for error in forwarding!")
+    }
+
+    override fun onPublishSuccessful(message: String) {
+        Log.d(TAG, "Reacting for successful published msg!")
+        val map = Gson().fromJson(message, HashMap::class.java)
+        Log.d(TAG, map.toString())
     }
 
     override fun onForwardingSuccessful() {

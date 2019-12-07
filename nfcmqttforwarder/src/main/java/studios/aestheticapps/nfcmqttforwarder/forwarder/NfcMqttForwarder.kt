@@ -329,7 +329,7 @@ class NfcMqttForwarder(private val application: Application,
                 Log.w(TAG, "Successfully published to $brokerUri.")
 
                 // notify observers
-                onResultListener?.onPublishSuccessful()
+                onResultListener?.onPublishSuccessful(payload)
 
                 // successfully connected and published message
                 onResultListener?.onForwardingSuccessful()
